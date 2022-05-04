@@ -1,0 +1,4 @@
+instrumentconfig.csv description
+
+Pointsize: Size of 1 contract
+PerBlock: Commission cost of 1 block

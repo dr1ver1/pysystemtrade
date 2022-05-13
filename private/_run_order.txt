@@ -1,0 +1,11 @@
+
+Ad Hoc:
+-------
+load_instr_roll_config.py - for new instruments. also for rolling???
+
+
+Daily Schedule:
+---------------
+C:\Users\david\OneDrive\VSCode Projects\BarchartData\createExcelData.py 
+load_barchart.py
+my_multipleprices_from_arcticprices_and_csv_calendars_to_arctic.py

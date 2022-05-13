@@ -1,0 +1,11 @@
+Instrument,Pointsize,Percentage,PerBlock,PerTrade,AssetClass,Currency,Description,Slippage
+BUND,1000,0,2,0,Bond,EUR,German 10 year bond Bund,0.005
+GBP,62500,0,2.46,0,FX,USD,GBPUSD currency,6.61459616616592E-05
+GOLD,100,0,2.31,0,Metals,USD,Gold,0.0885298446
+GOLD_micro,10,0,0.25,0,Metals,USD,Gold micro,0.1
+CRUDE_W,1000,0,2.31,0,OilGas,USD,Light sweet crude Winter,0.009711689350737
+CRUDE_W_mini,500,0,1.5,0,OilGas,USD,Light sweet crude Winter mini,0.025
+SP500,50,0,2.05,0,Equity,USD,US equity index S&P500 ,0.125
+SP500_micro,5,0,0.25,0,Equity,USD,S&P 500 micro,0.125
+
+

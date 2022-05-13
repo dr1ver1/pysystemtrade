@@ -10,7 +10,7 @@ if __name__ == "__main__":
     input("Will overwrite existing prices are you sure?! CTL-C to abort")
 
     arctic_fx_prices = arcticFxPricesData()
-    csv_fx_prices = csvFxPricesData()
+    csv_fx_prices = csvFxPricesData("private.data.spot.barchart")   # DS: Added my folder as an argument (default is no argument)
 
     list_of_ccy_codes = csv_fx_prices.get_list_of_fxcodes()
 

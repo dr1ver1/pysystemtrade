@@ -9,6 +9,7 @@ from sysdata.arctic.arctic_futures_per_contract_prices import (
 )
 from sysdata.arctic.arctic_spotfx_prices import arcticFxPricesData
 from sysobjects.contracts import futuresContract
+from sysdata.csv.csv_spot_fx import csvFxPricesData
 
 # Copy callendars!
 
@@ -55,7 +56,37 @@ def arcticDeleteFXspot():
 
 def arcticUpdateFXspot():
     # Updates all FX Spots data from Arctic
-    arctic_prices = arcticFxPricesData()
+    arctic_fx_prices = arcticFxPricesData()
+    csv_fx_prices = csvFxPricesData("private.data.spot.barchart")
+
+    # broker_fx_data = dataBroker(data)
+    # db_fx_data = dataCurrency(data)
+
+    # Loop through spot codes
+    list_of_ccy_codes = csv_fx_prices.get_list_of_fxcodes()
+
+    for currency_code in list_of_ccy_codes:
+        fx_prices = csv_fx_prices.get_fx_prices(currency_code)
+        arctic_fx_prices.add_fx_prices(
+            currency_code, fx_prices, ignore_duplication=True
+        )
+
+
+
+    # new_fx_prices = broker_fx_data.get_fx_prices(fx_code)  # returns fxPrices object
+    # Need to get fx_prices from csv files
+    
+
+    rows_added = db_fx_data.update_fx_prices_and_return_rows_added(
+        fx_code, new_fx_prices, check_for_spike=True
+    )
+
+    if rows_added is spike_in_data:
+        report_fx_data_spike(data, fx_code)
+        return failure
+
+    return success
+
 
 
 

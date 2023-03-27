@@ -1,3 +1,4 @@
+from sysdata.data_blob import dataBlob
 from sysdata.futures.instruments import futuresInstrumentData
 
 from syslogdiag.log_to_screen import logtoscreen
@@ -12,14 +13,18 @@ class brokerFuturesInstrumentData(futuresInstrumentData):
 
     """
 
-    def __init__(self, log=logtoscreen("brokerFuturesInstrumentData")):
+    def __init__(self, data: dataBlob, log=logtoscreen("brokerFuturesInstrumentData")):
         super().__init__(log=log)
+        self._data = data
 
-    def get_brokers_instrument_code(self, instrument_code: str) -> str:
-        raise NotImplementedError
-
-    def get_instrument_code_from_broker_code(self, broker_code: str) -> str:
+    def get_instrument_code_from_broker_contract_object(
+        self, broker_contract_object: str
+    ) -> str:
         raise NotImplementedError
 
     def get_list_of_instruments(self) -> list:
         raise NotImplementedError
+
+    @property
+    def data(self) -> dataBlob:
+        return self._data

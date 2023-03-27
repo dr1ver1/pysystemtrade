@@ -1,9 +1,9 @@
 from collections import namedtuple
-import numpy as np
 
-
+from syscore.exceptions import missingData
 from syscore.genutils import sign
-from syscore.objects import missing_order, success, missing_data
+from syscore.constants import success
+from sysexecution.orders.named_order_objects import missing_order
 
 from sysdata.data_blob import dataBlob
 
@@ -11,7 +11,7 @@ from sysobjects.contracts import futuresContract
 
 from sysproduction.data.contracts import dataContracts
 from sysproduction.data.positions import diagPositions
-from sysproduction.data.prices import diagPrices
+from sysproduction.data.prices import modify_price_when_contract_has_changed
 from sysproduction.data.controls import dataLocks
 
 from sysexecution.order_stacks.order_stack import orderStackData
@@ -218,6 +218,16 @@ def get_required_contract_trade_for_instrument(
 
         log.msg(
             "No roll, allocating entire order %s to current contract %s"
+            % (str(instrument_order), current_contract)
+        )
+        return [contractIdAndTrade(current_contract, trade)]
+
+    elif diag_positions.is_roll_state_close(instrument_code):
+        diag_contracts = dataContracts(data)
+        current_contract = diag_contracts.get_priced_contract_id(instrument_code)
+
+        log.msg(
+            "Closing roll state, allocating entire order %s to current contract %s"
             % (str(instrument_order), current_contract)
         )
         return [contractIdAndTrade(current_contract, trade)]
@@ -483,11 +493,11 @@ def add_reference_price_to_a_direct_child_order(
         # No reference price so don't bother
         return child_order
 
-    new_reference_price = calculate_adjusted_price_for_a_direct_child_order(
-        data, child_order, contract_to_match, price_to_adjust
-    )
-
-    if new_reference_price is missing_data:
+    try:
+        new_reference_price = calculate_adjusted_price_for_a_direct_child_order(
+            data, child_order, contract_to_match, price_to_adjust
+        )
+    except missingData:
         log = instrument_order.log_with_attributes(data.log)
         log.warn(
             "Couldn't adjust reference price for order %s child %s going from %s to %s, can't do TCA"
@@ -529,25 +539,13 @@ def calculate_adjusted_price_for_a_direct_child_order(
 
     child_contract_date = child_order.contract_date_key
 
-    if original_contract_date == child_contract_date:
-        return original_price
-
-    diag_prices = diagPrices(data)
-    contract_list = [original_contract_date, child_contract_date]
-    (
-        _last_matched_date,
-        list_of_matching_prices,
-    ) = diag_prices.get_last_matched_date_and_prices_for_contract_list(
-        instrument_code, contract_list
+    adjusted_price = modify_price_when_contract_has_changed(
+        data=data,
+        instrument_code=instrument_code,
+        original_contract_date=original_contract_date,
+        new_contract_date=child_contract_date,
+        original_price=original_price,
     )
-    differential = list_of_matching_prices[1] - list_of_matching_prices[0]
-
-    if np.isnan(differential):
-        # can't adjust
-        # note need to test code there may be other ways in which this fails
-        return missing_data
-
-    adjusted_price = original_price + differential
 
     return adjusted_price
 
@@ -604,10 +602,11 @@ def add_limit_price_to_a_direct_child_order(
         # No limit price so don't bother
         return child_order
 
-    new_limit_price = calculate_adjusted_price_for_a_direct_child_order(
-        data, child_order, contract_to_match, price_to_adjust
-    )
-    if new_limit_price is missing_data:
+    try:
+        new_limit_price = calculate_adjusted_price_for_a_direct_child_order(
+            data, child_order, contract_to_match, price_to_adjust
+        )
+    except missingData:
         # This is a serious problem
         # We can't possibly execute any part of the parent order
         log = instrument_order.log_with_attributes(data.log)

@@ -3,7 +3,7 @@ from copy import copy
 import numpy as np
 import pandas as pd
 
-from syscore.objects import failure, success
+from syscore.constants import success, failure
 from sysdata.data_blob import dataBlob
 from sysobjects.adjusted_prices import futuresAdjustedPrices
 from sysobjects.contracts import futuresContract
@@ -35,9 +35,12 @@ def get_roll_data_for_instrument(instrument_code, data):
     contract_priced = c_data.get_priced_contract_id(instrument_code)
     contract_fwd = c_data.get_forward_contract_id(instrument_code)
 
-    volumes = relative_volume_in_forward_contract_and_price(data, instrument_code)
-    volume_priced = volumes[0]
-    volume_fwd = volumes[1]
+    relative_volumes = relative_volume_in_forward_contract_and_price(
+        data, instrument_code
+    )
+    relative_volume_fwd = relative_volumes[1]
+
+    contract_volume_fwd = volume_contracts_in_forward_contract(data, instrument_code)
 
     # length to expiries / length to suggested roll
 
@@ -62,8 +65,8 @@ def get_roll_data_for_instrument(instrument_code, data):
         contract_priced=contract_priced,
         contract_fwd=contract_fwd,
         position_priced=position_priced,
-        volume_priced=volume_priced,
-        volume_fwd=volume_fwd,
+        relative_volume_fwd=relative_volume_fwd,
+        contract_volume_fwd=contract_volume_fwd,
     )
 
     return results_dict_code
@@ -74,8 +77,11 @@ def relative_volume_in_forward_contract_versus_price(
 ) -> float:
 
     volumes = relative_volume_in_forward_contract_and_price(data, instrument_code)
+    required_volume = volumes[1]
+    if np.isnan(required_volume):
+        required_volume = 0
 
-    return volumes[1]
+    return required_volume
 
 
 def relative_volume_in_forward_contract_and_price(
@@ -86,6 +92,7 @@ def relative_volume_in_forward_contract_and_price(
     forward_contract_id = c_data.get_forward_contract_id(instrument_code)
     current_contract = c_data.get_priced_contract_id(instrument_code)
     v_data = diagVolumes(data)
+    ## normalises so first contract as volume of 1
     volumes = v_data.get_normalised_smoothed_volumes_of_contract_list(
         instrument_code, [current_contract, forward_contract_id]
     )
@@ -93,9 +100,25 @@ def relative_volume_in_forward_contract_and_price(
     return volumes
 
 
+def volume_contracts_in_forward_contract(data: dataBlob, instrument_code: str) -> float:
+
+    c_data = dataContracts(data)
+    forward_contract_id = c_data.get_forward_contract_id(instrument_code)
+    v_data = diagVolumes(data)
+    volume = v_data.get_smoothed_volume_for_contract(
+        instrument_code, forward_contract_id
+    )
+
+    if np.isnan(volume):
+        volume = 0
+
+    return volume
+
+
 class rollingAdjustedAndMultiplePrices(object):
-    def __init__(self, data: dataBlob, instrument_code: str,
-                 allow_forward_fill: bool = False):
+    def __init__(
+        self, data: dataBlob, instrument_code: str, allow_forward_fill: bool = False
+    ):
         self.data = data
         self.instrument_code = instrument_code
         self.allow_forward_fill = allow_forward_fill
@@ -147,8 +170,10 @@ class rollingAdjustedAndMultiplePrices(object):
             updated_multiple_prices = (
                 self._updated_multiple_prices
             ) = update_multiple_prices_on_roll(
-                self.data, self.current_multiple_prices, self.instrument_code,
-                allow_forward_fill = self.allow_forward_fill
+                self.data,
+                self.current_multiple_prices,
+                self.instrument_code,
+                allow_forward_fill=self.allow_forward_fill,
             )
 
         return updated_multiple_prices
@@ -195,10 +220,9 @@ def compare_old_and_new_prices(price_list, price_list_names):
 
 def update_multiple_prices_on_roll(
     data: dataBlob,
-        current_multiple_prices: futuresMultiplePrices,
-        instrument_code: str,
-    allow_forward_fill: bool = False
-
+    current_multiple_prices: futuresMultiplePrices,
+    instrument_code: str,
+    allow_forward_fill: bool = False,
 ) -> futuresMultiplePrices:
     """
     Roll multiple prices
@@ -231,7 +255,7 @@ def update_multiple_prices_on_roll(
     new_multiple_prices = futuresMultiplePrices(copy(current_multiple_prices))
 
     if allow_forward_fill:
-        new_multiple_prices = new_multiple_prices.ffill()
+        new_multiple_prices = futuresMultiplePrices(new_multiple_prices.ffill())
 
     # If the last row is all Nans, we can't do this
     new_multiple_prices = new_multiple_prices.sort_index()
@@ -318,7 +342,7 @@ def get_final_matched_price_from_contract_object(
 ):
 
     diag_prices = diagPrices(data)
-    price_series = diag_prices.get_prices_for_contract_object(
+    price_series = diag_prices.get_merged_prices_for_contract_object(
         contract_object
     ).return_final_prices()
 
@@ -336,8 +360,7 @@ preferred_columns = dict(
 )
 
 
-def get_or_infer_latest_price(new_multiple_prices,
-                              price_col: str="PRICE"):
+def get_or_infer_latest_price(new_multiple_prices, price_col: str = "PRICE"):
     """
     Get the last price in a given column
 
@@ -369,9 +392,7 @@ def get_or_infer_latest_price(new_multiple_prices,
     raise Exception("Couldn't infer price of %s column - can't roll" % price_col)
 
 
-def infer_latest_price(new_multiple_prices,
-                       price_col: str,
-                       col_to_use: str):
+def infer_latest_price(new_multiple_prices, price_col: str, col_to_use: str):
     """
     Infer the last price in price_col from col_to_use
 
@@ -507,5 +528,3 @@ def rollback_adjustment(
         return failure
 
     return success
-
-

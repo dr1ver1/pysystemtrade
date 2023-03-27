@@ -1,8 +1,27 @@
-import re
+from typing import NamedTuple
+from ib_insync.ib import Position, Contract
 from syscore.genutils import highest_common_factor_for_list, sign
-from syscore.objects import arg_not_supplied, missing_data
+from syscore.constants import arg_not_supplied
 
 from sysexecution.trade_qty import tradeQuantity
+
+
+class IBPositionWithExtendedAttr(NamedTuple):
+    account: str
+    contract: Contract
+    position: float
+    avgCost: float
+    exchange: str
+
+    @classmethod
+    def from_ib_position(cls, ib_position: Position, exchange: str):
+        return cls(
+            account=ib_position.account,
+            contract=ib_position.contract,
+            avgCost=ib_position.avgCost,
+            position=ib_position.position,
+            exchange=exchange,
+        )
 
 
 def extract_fx_balances_from_account_summary(account_summary) -> dict:
@@ -53,7 +72,9 @@ def from_ib_positions_to_dict(
         asset_class = position.contract.secType
         method = position_methods.get(asset_class, None)
         if method is None:
-            raise Exception("Can't find asset class %s in methods dict" % asset_class)
+            # Resolve unexpected asset classes like cash rather than failing
+            method = resolve_ib_cash_position
+            # raise Exception("Can't find asset class %s in methods dict" % asset_class)
 
         resolved_position = method(position)
         asset_class_list = resolved_positions_dict.get(asset_class, [])
@@ -75,6 +96,7 @@ def resolve_ib_stock_position(position):
         exchange=position.contract.exchange,
         currency=position.contract.currency,
         position=position.position,
+        ib_contract=position.contract,  ## persist to find exchanges later
     )
 
 
@@ -87,6 +109,7 @@ def resolve_ib_future_position(position):
         multiplier=float(position.contract.multiplier),
         currency=position.contract.currency,
         position=position.position,
+        ib_contract=position.contract,  ## persist to find exchanges later
     )
 
 
@@ -99,6 +122,7 @@ def resolve_ib_cash_position(position):
         multiplier=1.0,
         currency=position.contract.currency,
         position=position.position,
+        ib_contract=position.contract,  ## persist to find exchanges later
     )
 
 

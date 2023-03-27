@@ -1,12 +1,13 @@
 import dataclasses
 
-from syscore.fileutils import get_filename_for_package
+from syscore.fileutils import resolve_path_and_filename_for_package
 from sysdata.futures.instruments import futuresInstrumentData
-from syscore.objects import arg_not_supplied
+from syscore.constants import arg_not_supplied
 from sysobjects.instruments import (
     futuresInstrument,
     futuresInstrumentWithMetaData,
     instrumentMetaData,
+    META_FIELD_LIST,
 )
 from syslogdiag.log_to_screen import logtoscreen
 import pandas as pd
@@ -31,39 +32,8 @@ class csvFuturesInstrumentData(futuresInstrumentData):
 
         if datapath is arg_not_supplied:
             datapath = INSTRUMENT_CONFIG_PATH
-        config_file = get_filename_for_package(datapath, CONFIG_FILE_NAME)
+        config_file = resolve_path_and_filename_for_package(datapath, CONFIG_FILE_NAME)
         self._config_file = config_file
-
-    @property
-    def config_file(self):
-        return self._config_file
-
-    def _load_instrument_csv_as_df(self) -> pd.DataFrame:
-        try:
-            config_data = pd.read_csv(self.config_file)
-        except BaseException:
-            raise Exception("Can't read file %s" % self.config_file)
-
-        try:
-            config_data.index = config_data.Instrument
-            config_data.drop(labels="Instrument", axis=1, inplace=True)
-
-        except BaseException:
-            raise Exception("Badly configured file %s" % (self._config_file))
-
-        return config_data
-
-    def get_all_instrument_data_as_df(self) -> pd.DataFrame:
-        """
-        Get configuration information as a dataframe
-
-        :return: dict of config information
-        """
-        config_data = self._load_instrument_csv_as_df()
-        return config_data
-
-    def __repr__(self):
-        return "Instruments data from %s" % self._config_file
 
     def get_list_of_instruments(self) -> list:
         return list(self.get_all_instrument_data_as_df().index)
@@ -96,8 +66,49 @@ class csvFuturesInstrumentData(futuresInstrumentData):
         instrument_data_as_df.to_csv(
             self._config_file,
             index_label="Instrument",
-            columns=[field.name for field in dataclasses.fields(instrumentMetaData)]
+            columns=[field for field in META_FIELD_LIST],
         )
+
+    def get_all_instrument_data_as_df(self) -> pd.DataFrame:
+        """
+        Get configuration information as a dataframe
+
+        :return: dict of config information
+        """
+        config_data = self._instrument_csv_as_df()
+        return config_data
+
+    def _instrument_csv_as_df(self) -> pd.DataFrame:
+
+        config_data = getattr(self, "_instrument_df", None)
+        if config_data is None:
+            config_data = self._load_and_store_instrument_csv_as_df()
+
+        return config_data
+
+    def _load_and_store_instrument_csv_as_df(self) -> pd.DataFrame:
+        try:
+            config_data = pd.read_csv(self.config_file)
+        except BaseException:
+            raise Exception("Can't read file %s" % self.config_file)
+
+        try:
+            config_data.index = config_data.Instrument
+            config_data.drop(labels="Instrument", axis=1, inplace=True)
+
+        except BaseException:
+            raise Exception("Badly configured file %s" % (self._config_file))
+
+        self._config_data = config_data
+
+        return config_data
+
+    @property
+    def config_file(self):
+        return self._config_file
+
+    def __repr__(self):
+        return "Instruments data from %s" % self._config_file
 
 
 def get_instrument_with_meta_data_object(

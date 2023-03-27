@@ -2,12 +2,13 @@
 Update spot FX prices using interactive brokers data, dump into mongodb
 """
 
-from syscore.objects import success, failure
-from syscore.merge_data import spike_in_data
+from syscore.constants import success, failure
+from syscore.pandas.merge_data_keeping_past_data import SPIKE_IN_DATA
 from sysdata.data_blob import dataBlob
 from sysproduction.data.currency_data import dataCurrency
 from sysproduction.data.broker import dataBroker
 from syslogdiag.email_via_db_interface import send_production_mail_msg
+from syslogdiag.pst_logger import CURRENCY_CODE_LOG_LABEL
 
 
 def update_fx_prices():
@@ -43,7 +44,7 @@ def update_fx_prices_with_data(data: dataBlob):
     data.log.msg("FX Codes: %s" % str(list_of_codes_all))
 
     for fx_code in list_of_codes_all:
-        data.log.label(fx_code=fx_code)
+        data.log.label(**{CURRENCY_CODE_LOG_LABEL: fx_code})
         update_fx_prices_for_code(fx_code, data)
 
 
@@ -56,7 +57,7 @@ def update_fx_prices_for_code(fx_code: str, data: dataBlob):
         fx_code, new_fx_prices, check_for_spike=True
     )
 
-    if rows_added is spike_in_data:
+    if rows_added is SPIKE_IN_DATA:
         report_fx_data_spike(data, fx_code)
         return failure
 
@@ -73,3 +74,7 @@ def report_fx_data_spike(data: dataBlob, fx_code: str):
         send_production_mail_msg(data, msg, "FX Price Spike %s" % str(fx_code))
     except BaseException:
         data.log.warn("Couldn't send email about price spike")
+
+
+if __name__ == "__main__":
+    update_fx_prices()

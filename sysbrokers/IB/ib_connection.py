@@ -8,9 +8,11 @@ import time
 from ib_insync import IB
 
 from sysbrokers.IB.ib_connection_defaults import ib_defaults
-from syscore.objects import missing_data, arg_not_supplied
+from syscore.exceptions import missingData
+from syscore.constants import arg_not_supplied
 
 from syslogdiag.log_to_screen import logtoscreen
+from syslogdiag.pst_logger import pst_logger, BROKER_LOG_LABEL, CLIENTID_LOG_LABEL
 
 from sysdata.config.production_config import get_production_config
 
@@ -27,7 +29,7 @@ class connectionIB(object):
         ib_ipaddress: str = arg_not_supplied,
         ib_port: int = arg_not_supplied,
         account: str = arg_not_supplied,
-        log=logtoscreen("connectionIB"),
+        log: pst_logger = logtoscreen("connectionIB"),
     ):
         """
         :param client_id: client id
@@ -36,33 +38,42 @@ class connectionIB(object):
         :param log: logging object
         :param mongo_db: mongoDB connection
         """
-        self._log = log
 
         # resolve defaults
-
         ipaddress, port, __ = ib_defaults(ib_ipaddress=ib_ipaddress, ib_port=ib_port)
+        self._ib_connection_config = dict(
+            ipaddress=ipaddress, port=port, client=client_id
+        )
 
         # The client id is pulled from a mongo database
         # If for example you want to use a different database you could do something like:
         # connectionIB(mongo_ib_tracker =
         # mongoIBclientIDtracker(database_name="another")
 
+        # If you copy for another broker include these lines
+        self._init_log(log, client_id)
+
         # You can pass a client id yourself, or let IB find one
 
-        # If you copy for another broker include this line
-        log.label(broker="IB", clientid=client_id)
-        self._ib_connection_config = dict(
-            ipaddress=ipaddress, port=port, client=client_id
+        self._init_connection(
+            ipaddress=ipaddress, port=port, client_id=client_id, account=account
         )
 
+    def _init_log(self, log, client_id: int):
+        new_log = log.setup_empty_except_keep_type()
+        new_log.label(**{BROKER_LOG_LABEL: "IB", CLIENTID_LOG_LABEL: client_id})
+        self._log = new_log
+
+    def _init_connection(
+        self, ipaddress: str, port: int, client_id: int, account=arg_not_supplied
+    ):
         ib = IB()
 
-        if account is arg_not_supplied:
-            ## not passed get from config
-            account = get_broker_account()
-
-        ## that may still return missing data...
-        if account is missing_data:
+        try:
+            if account is arg_not_supplied:
+                ## not passed get from config
+                account = get_broker_account()
+        except missingData:
             self.log.error(
                 "Broker account ID not found in private config - may cause issues"
             )
@@ -108,5 +119,5 @@ class connectionIB(object):
 
 def get_broker_account() -> str:
     production_config = get_production_config()
-    account_id = production_config.get_element_or_missing_data("broker_account")
+    account_id = production_config.get_element("broker_account")
     return account_id

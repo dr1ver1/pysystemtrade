@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from syscore.objects import missing_data
+from syscore.exceptions import missingData
 
 from sysdata.config.instruments import (
     get_list_of_bad_instruments_in_config,
@@ -24,7 +24,6 @@ from sysdata.production.position_limits import (
     positionLimitData,
     positionLimitForInstrument,
     positionLimitForStrategyInstrument,
-
 )
 
 
@@ -33,13 +32,20 @@ from sysdata.data_blob import dataBlob
 from sysexecution.trade_qty import tradeQuantity
 from sysexecution.orders.broker_orders import brokerOrder
 from sysexecution.orders.instrument_orders import instrumentOrder
+from sysexecution.orders.list_of_orders import (
+    listOfOrders,
+    calculate_most_conservative_trade_from_list_of_orders_with_limits_applied,
+)
 
 from sysobjects.production.tradeable_object import (
     listOfInstrumentStrategies,
     instrumentStrategy,
 )
 from sysobjects.production.override import Override
-from sysobjects.production.position_limits import positionLimitAndPosition, NO_LIMIT
+from sysobjects.production.position_limits import (
+    positionLimitAndPosition,
+    NO_LIMIT,
+)
 from sysobjects.production.override import (
     NO_TRADE_OVERRIDE,
     REDUCE_ONLY_OVERRIDE,
@@ -180,7 +186,9 @@ class dataTradeLimits(productionDataLayerGeneric):
             instrument_strategy, period_days
         )
 
+
 OVERRIDE_REASON_IN_DATABASE = "in database"
+
 
 class diagOverrides(productionDataLayerGeneric):
     def _add_required_classes_to_data(self, data) -> dataBlob:
@@ -192,7 +200,9 @@ class diagOverrides(productionDataLayerGeneric):
         return self.data.db_override
 
     def get_dict_of_all_overrides_with_reasons(self) -> dict:
-        all_overrides_in_db_with_reason = self.get_dict_of_all_overrides_in_db_with_reasons()
+        all_overrides_in_db_with_reason = (
+            self.get_dict_of_all_overrides_in_db_with_reasons()
+        )
         all_overrides_in_config = self.get_dict_of_all_overrides_in_config()
         all_overrides = {**all_overrides_in_db_with_reason, **all_overrides_in_config}
 
@@ -208,7 +218,6 @@ class diagOverrides(productionDataLayerGeneric):
         )
 
         return all_overrides_in_db_with_reason
-
 
     def get_cumulative_override_for_instrument_strategy(
         self, instrument_strategy: instrumentStrategy
@@ -411,8 +420,7 @@ class updateOverrides(productionDataLayerGeneric):
 
 class dataPositionLimits(productionDataLayerGeneric):
     def _add_required_classes_to_data(self, data: dataBlob) -> dataBlob:
-        data.add_class_list([mongoPositionLimitData,
-                              mongoTemporaryCloseData])
+        data.add_class_list([mongoPositionLimitData, mongoTemporaryCloseData])
         return data
 
     @property
@@ -423,48 +431,61 @@ class dataPositionLimits(productionDataLayerGeneric):
     def db_temporary_close_data(self) -> temporaryCloseData:
         return self.data.db_temporary_close
 
-    def cut_down_proposed_instrument_trade_for_position_limits(
-        self, order: instrumentOrder
-    ):
+    def apply_position_limit_to_order(self, order: instrumentOrder) -> instrumentOrder:
 
+        list_of_orders = self._get_list_of_orders_after_position_limits_applied(order)
+
+        ## use instrument position as it includes everything
         instrument_strategy = order.instrument_strategy
         instrument_code = instrument_strategy.instrument_code
-
-        max_order_ok_against_instrument_strategy = (
-            self._check_if_proposed_trade_okay_against_instrument_strategy_constraint(
-                instrument_strategy, order
-            )
-        )
-        max_order_ok_against_instrument = (
-            self._check_if_proposed_trade_okay_against_instrument_constraint(
-                instrument_code, order
-            )
-        )
+        position = self._get_current_position_for_instrument(instrument_code)
 
         new_order = (
-            order.single_leg_trade_qty_with_lowest_abs_value_trade_from_order_list(
-                [
-                    max_order_ok_against_instrument,
-                    max_order_ok_against_instrument_strategy,
-                ]
+            calculate_most_conservative_trade_from_list_of_orders_with_limits_applied(
+                position=position, original_order=order, list_of_orders=list_of_orders
             )
         )
 
         return new_order
 
-    def _check_if_proposed_trade_okay_against_instrument_strategy_constraint(
+    def _get_list_of_orders_after_position_limits_applied(
+        self, order: instrumentOrder
+    ) -> listOfOrders:
+
+        instrument_strategy = order.instrument_strategy
+        instrument_code = instrument_strategy.instrument_code
+
+        order_with_instrument_strategy_limit_applied = (
+            self._apply_instrument_strategy_position_limit_to_order(
+                instrument_strategy, order
+            )
+        )
+        order_with_instrument_limit_applied = (
+            self._apply_instrument_position_limit_to_order(instrument_code, order)
+        )
+
+        list_of_orders = listOfOrders(
+            [
+                order_with_instrument_limit_applied,
+                order_with_instrument_strategy_limit_applied,
+            ]
+        )
+
+        return list_of_orders
+
+    def _apply_instrument_strategy_position_limit_to_order(
         self, instrument_strategy: instrumentStrategy, order: instrumentOrder
     ) -> instrumentOrder:
 
         position_and_limit = self._get_limit_and_position_for_instrument_strategy(
             instrument_strategy
         )
-        max_order_ok_against_instrument_strategy = (
-            position_and_limit.what_trade_is_possible(order)
+        order_with_instrument_strategy_limit_applied = (
+            position_and_limit.apply_position_limit_to_order(order)
         )
 
         # Ignore warning instrumentOrder inherits from Order
-        return max_order_ok_against_instrument_strategy
+        return order_with_instrument_strategy_limit_applied
 
     def get_maximum_position_contracts_for_instrument_strategy(
         self, instrument_strategy: instrumentStrategy
@@ -472,16 +493,19 @@ class dataPositionLimits(productionDataLayerGeneric):
 
         ## FIXME: THIS WON'T WORK IF THERE ARE MULTIPLE STRATEGIES TRADING AN INSTRUMENT
 
-        limit_for_instrument = \
-            self._get_position_limit_object_for_instrument(instrument_strategy.instrument_code)
+        limit_for_instrument = self._get_position_limit_object_for_instrument(
+            instrument_strategy.instrument_code
+        )
 
-        limit_for_instrument_strategy = \
+        limit_for_instrument_strategy = (
             self._get_position_limit_object_for_instrument_strategy(instrument_strategy)
+        )
 
-        minimum_limit_contracts = limit_for_instrument.minimum_position_limit(limit_for_instrument_strategy)
+        minimum_limit_contracts = limit_for_instrument.minimum_position_limit(
+            limit_for_instrument_strategy
+        )
 
         return minimum_limit_contracts
-
 
     def _get_limit_and_position_for_instrument_strategy(
         self, instrument_strategy: instrumentStrategy
@@ -515,20 +539,19 @@ class dataPositionLimits(productionDataLayerGeneric):
 
         return position
 
-    def _check_if_proposed_trade_okay_against_instrument_constraint(
+    def _apply_instrument_position_limit_to_order(
         self, instrument_code: str, order: instrumentOrder
     ) -> instrumentOrder:
 
         position_and_limit = self._get_limit_and_position_for_instrument(
             instrument_code
         )
-        max_order_ok_against_instrument = position_and_limit.what_trade_is_possible(
-            order
+        order_with_instrument_limit_applied = (
+            position_and_limit.apply_position_limit_to_order(order)
         )
 
         # Ignore warning instrumentOrder inherits from Order
-        return max_order_ok_against_instrument
-
+        return order_with_instrument_limit_applied
 
     def _get_limit_and_position_for_instrument(
         self, instrument_code: str
@@ -641,24 +664,40 @@ class dataPositionLimits(productionDataLayerGeneric):
 
     ## Temporary limits used by roll code
 
-    def temporarily_set_position_limit_to_zero_and_store_original_limit(self, instrument_code):
+    def temporarily_set_position_limit_to_zero_and_store_original_limit(
+        self, instrument_code
+    ):
         original_limit = self._get_position_limit_object_for_instrument(instrument_code)
         self.db_temporary_close_data.add_stored_position_limit(original_limit)
         self.set_abs_position_limit_for_instrument(instrument_code, 0)
 
-        self.log.msg("Temporarily setting position limit, was %s, now zero" % (str(original_limit)))
+        self.log.msg(
+            "Temporarily setting position limit, was %s, now zero"
+            % (str(original_limit))
+        )
 
     def reset_position_limit_for_instrument_to_original_value(self, instrument_code):
-        original_limit= self.db_temporary_close_data.get_stored_position_limit_for_instrument(instrument_code)
-        if original_limit is missing_data:
+        try:
+            original_limit = (
+                self.db_temporary_close_data.get_stored_position_limit_for_instrument(
+                    instrument_code
+                )
+            )
+        except missingData:
             self.log.warn("No temporary position limit stored")
             return None
 
-        self.set_abs_position_limit_for_instrument(instrument_code,
-                                                   original_limit.position_limit)
+        self.set_abs_position_limit_for_instrument(
+            instrument_code, original_limit.position_limit
+        )
 
-        self.db_temporary_close_data.clear_stored_position_limit_for_instrument(instrument_code)
-        self.log.msg("Reset position limit from temporary zero limit, now %s" % str(original_limit))
+        self.db_temporary_close_data.clear_stored_position_limit_for_instrument(
+            instrument_code
+        )
+        self.log.msg(
+            "Reset position limit from temporary zero limit, now %s"
+            % str(original_limit)
+        )
 
     ## set limits
 

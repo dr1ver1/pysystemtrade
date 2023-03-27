@@ -1,6 +1,6 @@
 CONTRACT_COLLECTION = "futures_contracts"
 
-from syscore.objects import arg_not_supplied, missing_data
+from syscore.constants import arg_not_supplied
 from sysdata.futures.contracts import futuresContractData
 from sysobjects.contracts import (
     contract_key_from_code_and_id,
@@ -43,8 +43,20 @@ class mongoFuturesContractData(futuresContractData):
         key = contract_key_from_code_and_id(instrument_code, contract_date_str)
         return self.mongo_data.key_is_in_data(key)
 
-    def get_list_of_all_contract_keys(self) -> list:
+    def _get_list_of_all_contract_keys(self) -> list:
         return self.mongo_data.get_list_of_keys()
+
+    def get_list_of_all_instruments_with_contracts(self) -> list:
+        list_of_keys = self._get_list_of_all_contract_keys()
+        list_of_split_keys = [
+            get_code_and_id_from_contract_key(key) for key in list_of_keys
+        ]
+        list_of_instruments = [
+            instrument_code for instrument_code, _ in list_of_split_keys
+        ]
+        unique_list_of_instruments = list(set(list_of_instruments))
+
+        return unique_list_of_instruments
 
     def get_all_contract_objects_for_instrument_code(
         self, instrument_code: str
@@ -60,7 +72,7 @@ class mongoFuturesContractData(futuresContractData):
         return list_of_futures_contracts
 
     def _get_all_contract_keys_for_instrument_code(self, instrument_code: str) -> list:
-        list_of_all_contract_keys = self.get_list_of_all_contract_keys()
+        list_of_all_contract_keys = self._get_list_of_all_contract_keys()
         list_of_relevant_keys = [
             contract_key
             for contract_key in list_of_all_contract_keys
@@ -92,9 +104,6 @@ class mongoFuturesContractData(futuresContractData):
     def _get_contract_data_from_key_without_checking(self, key: str) -> futuresContract:
 
         result_dict = self.mongo_data.get_result_dict_for_key_without_key_value(key)
-        if result_dict is missing_data:
-            # shouldn't happen...
-            raise Exception("Data for %s gone AWOL" % key)
 
         contract_object = futuresContract.create_from_dict(result_dict)
 

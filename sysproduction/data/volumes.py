@@ -1,6 +1,6 @@
 import datetime as datetime
 import pandas as pd
-from syscore.objects import missing_contract, arg_not_supplied, missing_data
+from syscore.exceptions import missingData
 from sysdata.arctic.arctic_futures_per_contract_prices import (
     arcticFuturesContractPriceData,
 )
@@ -63,21 +63,25 @@ class diagVolumes(productionDataLayerGeneric):
         self, instrument_code: str, contract_date_str: str
     ) -> float:
 
-        if contract_date_str is missing_contract:
-            return 0.0
         contract = futuresContract(instrument_code, contract_date_str)
-        volumes = self.get_daily_volumes_for_contract(contract)
+        try:
+            volumes = self.get_daily_volumes_for_contract(contract)
+        except missingData:
+            return 0.0
+
         final_volume = get_smoothed_volume_ignoring_old_data(volumes)
 
         return final_volume
 
     def get_daily_volumes_for_contract(self, contract: futuresContract) -> pd.Series:
-        price_data = self.db_futures_contract_price_data.get_prices_for_contract_object(
-            contract
+        price_data = (
+            self.db_futures_contract_price_data.get_merged_prices_for_contract_object(
+                contract
+            )
         )
 
         if len(price_data) == 0:
-            return missing_data
+            raise missingData
 
         volumes = price_data.daily_volumes()
 
@@ -85,10 +89,11 @@ class diagVolumes(productionDataLayerGeneric):
 
 
 def normalise_volumes(smoothed_volumes: list) -> list:
-    max_smoothed_volume = max(smoothed_volumes)
-    if max_smoothed_volume == 0.0:
-        max_smoothed_volume = NOTIONALLY_ZERO_VOLUME
-    normalised_volumes = [volume / max_smoothed_volume for volume in smoothed_volumes]
+    ## normalise to first contract, normally priced
+    normalised_to_volume = smoothed_volumes[0]
+    if normalised_to_volume == 0.0:
+        normalised_to_volume = NOTIONALLY_ZERO_VOLUME
+    normalised_volumes = [volume / normalised_to_volume for volume in smoothed_volumes]
 
     return normalised_volumes
 
@@ -96,9 +101,6 @@ def normalise_volumes(smoothed_volumes: list) -> list:
 def get_smoothed_volume_ignoring_old_data(
     volumes: pd.Series, ignore_before_days=14, span: int = 3
 ) -> float:
-    if volumes is missing_data:
-        return 0.0
-
     # ignore anything more than say 2 weeks old (so we don't get stale data)
     two_weeks_ago = datetime.datetime.now() - datetime.timedelta(
         days=ignore_before_days

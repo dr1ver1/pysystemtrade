@@ -10,7 +10,8 @@ from systems.stage import SystemStage
 from systems.system_cache import input, dont_cache, diagnostic, output
 
 from syscore.genutils import str2Bool
-from syscore.objects import resolve_function, missing_data
+from syscore.objects import resolve_function
+from syscore.constants import missing_data
 
 
 class ForecastScaleCap(SystemStage):
@@ -60,7 +61,6 @@ class ForecastScaleCap(SystemStage):
             "Calculating capped forecast for %s %s"
             % (instrument_code, rule_variation_name),
             instrument_code=instrument_code,
-            rule_variation_name=rule_variation_name,
         )
 
         scaled_forecast = self.get_scaled_forecast(instrument_code, rule_variation_name)
@@ -276,7 +276,7 @@ class ForecastScaleCap(SystemStage):
         scaling_factor = scalar_function(
             cs_forecasts,
             target_abs_forecast=target_abs_forecast,
-            **forecast_scalar_config
+            **forecast_scalar_config,
         )
 
         return scaling_factor
@@ -306,8 +306,7 @@ class ForecastScaleCap(SystemStage):
 
         self.log.msg(
             "Getting cross sectional forecasts for scalar calculation for %s over %s"
-            % (rule_variation_name, ", ".join(instrument_list)),
-            rule_variation_name=rule_variation_name,
+            % (rule_variation_name, ", ".join(instrument_list))
         )
 
         forecast_list = [

@@ -1,7 +1,7 @@
 import pandas as pd
 
 from systems.stage import SystemStage
-from syscore.objects import arg_not_supplied
+from syscore.constants import arg_not_supplied
 
 from systems.system_cache import output, dont_cache
 from systems.trading_rules import TradingRule
@@ -93,7 +93,6 @@ class Rules(SystemStage):
             "Calculating raw forecast %s for %s"
             % (instrument_code, rule_variation_name),
             instrument_code=instrument_code,
-            rule_variation_name=rule_variation_name,
         )
         # this will process all the rules, if not already done
         trading_rule_dict = self.trading_rules()

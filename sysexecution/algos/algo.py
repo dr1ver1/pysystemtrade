@@ -1,12 +1,9 @@
 from copy import copy
 from dataclasses import dataclass
 
-from syscore.objects import (
-    arg_not_supplied,
-    missing_order,
-    missing_contract,
-    missing_data,
-)
+from syscore.exceptions import missingContract, missingData
+from syscore.constants import arg_not_supplied
+from sysexecution.orders.named_order_objects import missing_order
 
 from sysdata.data_blob import dataBlob
 
@@ -29,7 +26,7 @@ limit_price_from_offside_price = "offside_price"
 sources_of_limit_price = [
     limit_price_from_offside_price,
     limit_price_from_side_price,
-    limit_price_from_offside_price,
+    limit_price_from_input,
 ]
 
 
@@ -49,6 +46,10 @@ class Algo(object):
     @property
     def data(self):
         return self._data
+
+    @property
+    def blocking_algo_requires_management(self) -> bool:
+        return True
 
     @property
     def data_broker(self):
@@ -95,10 +96,11 @@ class Algo(object):
         if ticker_object is None:
             ticker_object = self.data_broker.get_ticker_object_for_order(contract_order)
 
-        collected_prices = self.get_market_data_for_order_modifies_ticker_object(
-            ticker_object, contract_order
-        )
-        if collected_prices is missing_data:
+        try:
+            collected_prices = self.get_market_data_for_order_modifies_ticker_object(
+                ticker_object, contract_order
+            )
+        except missingData:
             # no data available, no can do
             return missing_order
 
@@ -164,29 +166,25 @@ class Algo(object):
         log = contract_order.log_with_attributes(self.data.log)
 
         # Get the first 'reference' tick
-        reference_tick = (
-            ticker_object.wait_for_valid_bid_and_ask_and_return_current_tick(
-                wait_time_seconds=10
+        try:
+            reference_tick = (
+                ticker_object.wait_for_valid_bid_and_ask_and_return_current_tick(
+                    wait_time_seconds=10
+                )
             )
-        )
-
-        tick_analysis = ticker_object.analyse_for_tick(reference_tick)
-
-        if tick_analysis is missing_data:
+        except missingData:
             log.warn(
                 "Can't get market data for %s so not trading with limit order %s"
                 % (contract_order.instrument_code, str(contract_order))
             )
-            return missing_data
+            raise
+
+        tick_analysis = ticker_object.analyse_for_tick(reference_tick)
 
         ticker_object.clear_and_add_reference_as_first_tick(reference_tick)
 
         # These prices will be used for limit price purposes
         # They are scalars
-        benchmark_side_prices = tick_analysis.side_price
-        offside_price = tick_analysis.offside_price
-        mid_price = tick_analysis.mid_price
-
         collected_prices = benchmarkPriceCollection(
             offside_price=tick_analysis.offside_price,
             side_price=tick_analysis.side_price,
@@ -229,8 +227,9 @@ class Algo(object):
     ) -> float:
         contract = contract_order.futures_contract
 
-        min_tick = self.data_broker.get_min_tick_size_for_contract(contract)
-        if min_tick is missing_contract:
+        try:
+            min_tick = self.data_broker.get_min_tick_size_for_contract(contract)
+        except missingContract:
             log = contract_order.log_with_attributes(self.data.log)
             log.warn(
                 "Couldn't find min tick size for %s, not rounding limit price %f"
@@ -242,23 +241,3 @@ class Algo(object):
         rounded_limit_price = min_tick * round(limit_price / min_tick)
 
         return rounded_limit_price
-
-    def get_market_conditions_for_contract_order_by_leg(
-        self, contract_order: contractOrder
-    ) -> list:
-        market_conditions = []
-        list_of_individual_contracts = (
-            contract_order.futures_contract.as_list_of_individual_contracts()
-        )
-        list_of_trades = contract_order.trade
-        for contract, qty in zip(list_of_individual_contracts, list_of_trades):
-
-            market_conditions_this_contract = self.data_broker.check_market_conditions_for_single_legged_contract_and_qty(
-                contract, qty
-            )
-            if market_conditions_this_contract is missing_data:
-                return missing_data
-
-            market_conditions.append(market_conditions_this_contract)
-
-        return market_conditions

@@ -3,22 +3,29 @@ import datetime
 
 from sysexecution.orders.base_orders import (
     Order,
-    no_order_id,
-    no_children,
-    no_parent,
     resolve_inputs_to_order,
     orderType,
 )
+from sysexecution.orders.named_order_objects import no_order_id, no_children, no_parent
 
 from sysexecution.trade_qty import tradeQuantity
+from syslogdiag.pst_logger import (
+    STRATEGY_NAME_LOG_LABEL,
+    INSTRUMENT_ORDER_ID_LABEL,
+    CONTRACT_ORDER_ID_LOG_LABEL,
+    INSTRUMENT_CODE_LOG_LABEL,
+)
 
 from sysobjects.production.tradeable_object import (
     futuresContractStrategy,
     instrumentStrategy,
     futuresContract,
 )
-from syscore.genutils import none_to_object, object_to_none
-from syscore.objects import success
+from syscore.genutils import (
+    if_empty_string_return_object,
+    if_object_matches_return_empty_string,
+)
+from syscore.constants import success
 
 
 class contractOrderType(orderType):
@@ -29,6 +36,7 @@ class contractOrderType(orderType):
 best_order_type = contractOrderType("best")
 balance_order_type = contractOrderType("balance_trade")
 panic_order_type = contractOrderType("panic")
+limit_order_type = contractOrderType("limit")
 
 NO_CONTROLLING_ALGO = None
 
@@ -55,7 +63,7 @@ class contractOrder(Order):
         inter_spread_order: bool = False,
         algo_to_use: str = "",
         reference_of_controlling_algo: str = None,
-        **kwargs_ignored
+        **kwargs_ignored,
     ):
         """
         :param args: Either a single argument 'strategy/instrument/contract_order_id' str, or strategy, instrument, contract_order_id; followed by trade
@@ -130,7 +138,7 @@ class contractOrder(Order):
             children=children,
             active=active,
             order_type=order_type,
-            **order_info
+            **order_info,
         )
 
     @classmethod
@@ -142,9 +150,13 @@ class contractOrder(Order):
         fill_datetime = order_as_dict.pop("fill_datetime")
 
         locked = order_as_dict.pop("locked")
-        order_id = none_to_object(order_as_dict.pop("order_id"), no_order_id)
-        parent = none_to_object(order_as_dict.pop("parent"), no_parent)
-        children = none_to_object(order_as_dict.pop("children"), no_children)
+        order_id = if_empty_string_return_object(
+            order_as_dict.pop("order_id"), no_order_id
+        )
+        parent = if_empty_string_return_object(order_as_dict.pop("parent"), no_parent)
+        children = if_empty_string_return_object(
+            order_as_dict.pop("children"), no_children
+        )
         active = order_as_dict.pop("active")
         order_type = order_as_dict.pop("order_type", None)
         order_type = contractOrderType(order_type)
@@ -163,7 +175,7 @@ class contractOrder(Order):
             fill_datetime=fill_datetime,
             filled_price=filled_price,
             order_type=order_type,
-            **order_info
+            **order_info,
         )
 
         return order
@@ -277,14 +289,20 @@ class contractOrder(Order):
         """
         Returns a new log object with contract_order attributes added
 
-        :param log: logger
+        :param log: pst_logger
         :return: log
         """
         new_log = log.setup(
-            strategy_name=self.strategy_name,
-            instrument_code=self.instrument_code,
-            contract_order_id=object_to_none(self.order_id, no_order_id),
-            instrument_order_id=object_to_none(self.parent, no_parent, 0),
+            **{
+                STRATEGY_NAME_LOG_LABEL: self.strategy_name,
+                INSTRUMENT_CODE_LOG_LABEL: self.instrument_code,
+                CONTRACT_ORDER_ID_LOG_LABEL: if_object_matches_return_empty_string(
+                    self.order_id, no_order_id
+                ),
+                INSTRUMENT_ORDER_ID_LABEL: if_object_matches_return_empty_string(
+                    self.parent, no_parent
+                ),
+            }
         )
 
         return new_log

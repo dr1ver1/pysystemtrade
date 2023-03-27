@@ -1,18 +1,19 @@
-from syscore.objects import arg_not_supplied
+import datetime
+from syscore.constants import arg_not_supplied
 
+from sysdata.config.configdata import Config
 from sysdata.data_blob import dataBlob
-from sysobjects.production.optimal_positions import optimalPositionWithReference
+from sysobjects.production.optimal_positions import (
+    optimalPositionWithReference,
+)
 from sysobjects.production.tradeable_object import instrumentStrategy
 
 from sysproduction.data.sim_data import get_sim_data_object_for_production
 from sysproduction.strategy_code.run_system_classic import (
     runSystemClassic,
-    set_up_config,
 )
 from sysproduction.data.contracts import dataContracts
-from sysproduction.data.positions import (
-    dataOptimalPositions,
-)
+from sysproduction.data.optimal_positions import dataOptimalPositions
 from sysproduction.data.backtest import store_backtest_state
 
 from syslogdiag.log_to_screen import logtoscreen
@@ -25,7 +26,9 @@ class runSystemCarryTrendDynamic(runSystemClassic):
     # DO NOT CHANGE THE NAME OF THIS FUNCTION; IT IS HARDCODED INTO CONFIGURATION FILES
     # BECAUSE IT IS ALSO USED TO LOAD BACKTESTS
     def system_method(
-        self, notional_trading_capital: float = arg_not_supplied, base_currency: str = arg_not_supplied
+        self,
+        notional_trading_capital: float = arg_not_supplied,
+        base_currency: str = arg_not_supplied,
     ) -> System:
         data = self.data
         backtest_config_filename = self.backtest_config_filename
@@ -40,21 +43,9 @@ class runSystemCarryTrendDynamic(runSystemClassic):
 
         return system
 
-    def run_backtest(self):
-        strategy_name = self.strategy_name
-        data = self.data
-
-        base_currency, notional_trading_capital = self._get_currency_and_capital()
-
-        system = self.system_method(
-            notional_trading_capital=notional_trading_capital,
-            base_currency=base_currency,
-        )
-
-        ## This is the difference here
-        updated_optimal_positions(data, strategy_name, system)
-
-        store_backtest_state(data, system, strategy_name=strategy_name)
+    @property
+    def function_to_call_on_update(self):
+        return updated_optimal_positions_for_dynamic_system
 
 
 def dynamic_system(
@@ -68,7 +59,7 @@ def dynamic_system(
     log_level = "on"
 
     sim_data = get_sim_data_object_for_production(data)
-    config = set_up_config(data, config_filename)
+    config = Config(config_filename)
 
     # Overwrite capital and base currency
     if notional_trading_capital is not arg_not_supplied:
@@ -123,7 +114,9 @@ def futures_system(data, config):
     return system
 
 
-def updated_optimal_positions(data: dataBlob, strategy_name: str, system: System):
+def updated_optimal_positions_for_dynamic_system(
+    data: dataBlob, strategy_name: str, system: System
+):
     log = data.log
 
     data_optimal_positions = dataOptimalPositions(data)
@@ -159,7 +152,11 @@ def construct_optimal_position_entry(
     reference_date = system.rawdata.get_daily_prices(instrument_code).index[-1]
     reference_contract = diag_contracts.get_priced_contract_id(instrument_code)
     position_entry = optimalPositionWithReference(
-        optimal_position, reference_price, reference_contract, reference_date
+        date=datetime.datetime.now(),
+        optimal_position=optimal_position,
+        reference_price=reference_price,
+        reference_contract=reference_contract,
+        reference_date=reference_date,
     )
 
     return position_entry

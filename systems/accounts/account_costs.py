@@ -1,9 +1,9 @@
 import pandas as pd
 
-from syscore.algos import calculate_weighted_average_with_nans
+from syscore.maths import calculate_weighted_average_with_nans
 from syscore.genutils import str2Bool
 from syscore.dateutils import ROOT_BDAYS_INYEAR
-from syscore.pdutils import turnover
+from syscore.pandas.strategy_functions import turnover
 
 from sysquant.estimators.turnover import turnoverDataForTradingRule
 
@@ -31,8 +31,7 @@ class accountCosts(accountInputs):
         """
         ## Calculate holding and transaction seperately, as the former could be pooled
         transaction_cost = self.get_SR_transaction_cost_for_instrument_forecast(
-            instrument_code = instrument_code,
-            rule_variation_name = rule_variation_name
+            instrument_code=instrument_code, rule_variation_name=rule_variation_name
         )
         holding_cost = self.get_SR_holding_cost_only(instrument_code)
 
@@ -316,18 +315,18 @@ class accountCosts(accountInputs):
         0.0065584086244069775
         """
 
-        cost_in_percentage_terms = (
-            self._get_SR_cost_per_trade_for_instrument_percentage(instrument_code)
+        cost_in_percentage_terms = self.get_SR_cost_per_trade_for_instrument_percentage(
+            instrument_code
         )
         avg_annual_vol_perc = self._recent_average_annual_perc_vol(instrument_code)
 
-        # cost per round trip
+        # cost per round trip so double
         SR_cost = 2.0 * cost_in_percentage_terms / avg_annual_vol_perc
 
         return SR_cost
 
     @diagnostic()
-    def _get_SR_cost_per_trade_for_instrument_percentage(
+    def get_SR_cost_per_trade_for_instrument_percentage(
         self, instrument_code: str
     ) -> float:
         raw_costs = self.get_raw_cost_data(instrument_code)
@@ -377,7 +376,6 @@ class accountCosts(accountInputs):
         average_vol = float(daily_vol[start_date:].mean())
 
         return average_vol
-
 
     @property
     def use_SR_costs(self) -> float:

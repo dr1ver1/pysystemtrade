@@ -1,9 +1,8 @@
 import datetime
 from copy import copy
-from syscore.objects import (
+from syscore.constants import success, failure
+from sysexecution.orders.named_order_objects import (
     missing_order,
-    success,
-    failure,
     no_order_id,
     no_children,
 )
@@ -154,6 +153,15 @@ class orderStackData(object):
         return order_id
 
     # FIND AND LIST ORDERS
+
+    def get_list_of_orders(self, exclude_inactive_orders: bool = True) -> list:
+        list_of_order_ids = self.get_list_of_order_ids(
+            exclude_inactive_orders=exclude_inactive_orders
+        )
+        list_of_orders = self.get_list_of_orders_from_order_id_list(list_of_order_ids)
+
+        return list_of_orders
+
     def get_list_of_orders_from_order_id_list(self, list_of_order_ids) -> listOfOrders:
         order_list = []
         for order_id in list_of_order_ids:

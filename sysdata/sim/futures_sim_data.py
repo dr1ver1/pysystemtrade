@@ -1,6 +1,6 @@
 import pandas as pd
 
-from syscore.objects import missing_instrument
+from syscore.constants import missing_instrument
 from sysdata.sim.sim_data import simData
 
 from sysobjects.adjusted_prices import futuresAdjustedPrices
@@ -153,8 +153,12 @@ class futuresSimData(simData):
             )
             return instrumentCosts()
 
+        spread_cost = self.get_spread_cost(instrument_code)
+
         instrument_meta_data = cost_data_object.meta_data
-        instrument_costs = instrumentCosts.from_meta_data(instrument_meta_data)
+        instrument_costs = instrumentCosts.from_meta_data_and_spread_cost(
+            instrument_meta_data, spread_cost=spread_cost
+        )
 
         return instrument_costs
 
@@ -199,6 +203,9 @@ class futuresSimData(simData):
 
         raise NotImplementedError()
 
+    def get_spread_cost(self, instrument_code: str) -> float:
+        raise NotImplementedError
+
     def get_backadjusted_futures_price(
         self, instrument_code: str
     ) -> futuresAdjustedPrices:
@@ -235,7 +242,6 @@ class futuresSimData(simData):
 
     def get_roll_parameters(self, instrument_code: str) -> rollParameters:
         raise NotImplementedError
-
 
     def get_instrument_object_with_meta_data(
         self, instrument_code: str

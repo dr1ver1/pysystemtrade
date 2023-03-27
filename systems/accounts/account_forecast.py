@@ -1,8 +1,8 @@
 import pandas as pd
 
 from syscore.dateutils import ROOT_BDAYS_INYEAR
-from syscore.objects import arg_not_supplied
-from syscore.pdutils import sum_series
+from syscore.constants import arg_not_supplied
+from syscore.pandas.pdutils import sum_series
 from sysquant.estimators.vol import robust_daily_vol_given_price
 
 from systems.system_cache import diagnostic
@@ -182,7 +182,6 @@ class accountForecast(accountCosts):
             "Calculating pandl for instrument forecast for %s %s"
             % (instrument_code, rule_variation_name),
             instrument_code=instrument_code,
-            rule_variation_name=rule_variation_name,
         )
 
         forecast = self.get_capped_forecast(instrument_code, rule_variation_name)

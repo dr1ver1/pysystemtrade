@@ -1,12 +1,21 @@
+from typing import Union
 import datetime
 
 from dataclasses import dataclass
 
-from syscore.objects import arg_not_supplied, missing_contract
+from syscore.constants import arg_not_supplied
 
-from syslogdiag.logger import logger
+from syslogdiag.pst_logger import (
+    pst_logger,
+    INSTRUMENT_CODE_LOG_LABEL,
+    CONTRACT_DATE_LOG_LABEL,
+)
 
-from sysobjects.contract_dates_and_expiries import contractDate, expiryDate
+from sysobjects.contract_dates_and_expiries import (
+    contractDate,
+    expiryDate,
+    listOfContractDateStr,
+)
 from sysobjects.instruments import futuresInstrument
 
 
@@ -57,8 +66,8 @@ class futuresContract(object):
 
     def __init__(
         self,
-        instrument_object: futuresInstrument,
-        contract_date_object: contractDate,
+        instrument_object: Union[str, futuresInstrument],
+        contract_date_object: Union[str, contractDate],
         parameter_object: parametersForFuturesContract = arg_not_supplied,
         simple: bool = False,
     ):
@@ -85,17 +94,12 @@ class futuresContract(object):
         self._contract_date = contract_date_object
         self._params = parameter_object
 
-    @classmethod
-    def from_two_strings(futuresContract, instrument_code: str, contract_date_str: str):
-
-        instrument_object = futuresInstrument(instrument_code)
-        contract_date = contractDate(contract_date_str, simple=True)
-
-        return futuresContract(instrument_object, contract_date, simple=True)
-
     def specific_log(self, log):
         new_log = log.setup(
-            instrument_code=self.instrument_code, contract_date=self.date_str
+            **{
+                INSTRUMENT_CODE_LOG_LABEL: self.instrument_code,
+                CONTRACT_DATE_LOG_LABEL: self.date_str,
+            }
         )
 
         return new_log
@@ -124,6 +128,14 @@ class futuresContract(object):
         else:
             return False
 
+    @classmethod
+    def from_key(cls, key):
+        code_and_id = get_code_and_id_from_contract_key(key)
+        instrument_code = code_and_id[0]
+        contract_id = code_and_id[1]
+
+        return cls(instrument_object=instrument_code, contract_date_object=contract_id)
+
     @property
     def key(self):
         return get_contract_key_from_code_and_id(self.instrument_code, self.date_str)
@@ -138,7 +150,7 @@ class futuresContract(object):
     def sampling_off(self):
         self.params.sampling = False
 
-    def log(self, log: logger):
+    def log(self, log: pst_logger):
         return log.setup(
             instrument_code=self.instrument_code, contract_date=self.date_str
         )
@@ -218,7 +230,6 @@ class futuresContract(object):
         timedelta = expiry_date - date_now
         return timedelta.days
 
-
     def update_single_expiry_date(self, new_expiry_date: expiryDate):
         self.contract_date.update_single_expiry_date(new_expiry_date)
 
@@ -242,11 +253,7 @@ class futuresContract(object):
         ]
 
         for contract_index, expiry_date in enumerate(new_expiries):
-            if expiry_date is missing_contract:
-                ## whole thing is buggered
-                return missing_contract
-            else:
-                self.update_nth_expiry_date(contract_index, expiry_date)
+            self.update_nth_expiry_date(contract_index, expiry_date)
 
         return self
 
@@ -353,7 +360,7 @@ class listOfFuturesContracts(list):
 
         return listOfFuturesContracts(contracts_currently_sampling)
 
-    def list_of_dates(self) -> list:
+    def list_of_dates(self) -> listOfContractDateStr:
         # Return list of contract_date identifiers
         contract_dates = [contract.date_str for contract in self]
         return contract_dates

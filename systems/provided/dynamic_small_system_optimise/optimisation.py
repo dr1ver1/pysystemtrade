@@ -2,10 +2,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from syscore.algos import get_near_psd
-from syscore.objects import arg_not_supplied
+from syscore.constants import arg_not_supplied
 
-from syslogdiag.logger import logger, nullLog
+from syslogdiag.pst_logger import pst_logger, nullLog
 
 from sysquant.estimators.covariance import covarianceEstimate
 from sysquant.estimators.mean_estimator import meanEstimates
@@ -40,7 +39,7 @@ class objectiveFunctionForGreedy:
         previous_positions: portfolioWeights = arg_not_supplied,
         constraints: constraintsForDynamicOpt = arg_not_supplied,
         maximum_positions: portfolioWeights = arg_not_supplied,
-        log: logger = nullLog(""),
+        log: pst_logger = nullLog(""),
     ):
 
         self.covariance_matrix = covariance_matrix
@@ -243,7 +242,7 @@ class objectiveFunctionForGreedy:
             self.log.critical(msg)
             raise Exception(msg)
 
-        track_error_std = track_error_var ** 0.5
+        track_error_std = track_error_var**0.5
 
         return track_error_std
 

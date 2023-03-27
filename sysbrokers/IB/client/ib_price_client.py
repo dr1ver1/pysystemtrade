@@ -9,20 +9,22 @@ from ib_insync import util
 from sysbrokers.IB.client.ib_client import PACING_INTERVAL_SECONDS
 from sysbrokers.IB.client.ib_contracts_client import ibContractsClient
 from sysbrokers.IB.ib_positions import resolveBS_for_list
+from syscore.exceptions import missingContract, missingData
 
-from syscore.objects import missing_contract, missing_data
 from syscore.dateutils import (
-    adjust_timestamp_to_include_notional_close_and_time_offset,
+    replace_midnight_with_notional_closing_time,
     strip_timezone_fromdatetime,
     Frequency,
     DAILY_PRICE_FREQ,
 )
 
-from syslogdiag.logger import logger
+from syslogdiag.pst_logger import pst_logger
 from syslogdiag.log_to_screen import logtoscreen
 
 from sysobjects.contracts import futuresContract
 from sysexecution.trade_qty import tradeQuantity
+
+TIMEOUT_SECONDS_ON_HISTORICAL_DATA = 20
 
 
 class tickerWithBS(object):
@@ -37,6 +39,7 @@ class ibPriceClient(ibContractsClient):
         self,
         contract_object_with_ib_broker_config: futuresContract,
         bar_freq: Frequency = DAILY_PRICE_FREQ,
+        whatToShow="TRADES",
         allow_expired=False,
     ) -> pd.DataFrame:
         """
@@ -49,19 +52,19 @@ class ibPriceClient(ibContractsClient):
 
         specific_log = contract_object_with_ib_broker_config.specific_log(self.log)
 
-        ibcontract = self.ib_futures_contract(
-            contract_object_with_ib_broker_config, allow_expired=allow_expired
-        )
-
-        if ibcontract is missing_contract:
+        try:
+            ibcontract = self.ib_futures_contract(
+                contract_object_with_ib_broker_config, allow_expired=allow_expired
+            )
+        except missingContract:
             specific_log.warn(
                 "Can't resolve IB contract %s"
                 % str(contract_object_with_ib_broker_config)
             )
-            return missing_data
+            raise missingData
 
         price_data = self._get_generic_data_for_contract(
-            ibcontract, log=specific_log, bar_freq=bar_freq, whatToShow="TRADES"
+            ibcontract, log=specific_log, bar_freq=bar_freq, whatToShow=whatToShow
         )
 
         return price_data
@@ -74,17 +77,17 @@ class ibPriceClient(ibContractsClient):
 
         specific_log = contract_object_with_ib_data.specific_log(self.log)
 
-        ibcontract = self.ib_futures_contract(
-            contract_object_with_ib_data,
-            trade_list_for_multiple_legs=trade_list_for_multiple_legs,
-        )
-
-        if ibcontract is missing_contract:
+        try:
+            ibcontract = self.ib_futures_contract(
+                contract_object_with_ib_data,
+                trade_list_for_multiple_legs=trade_list_for_multiple_legs,
+            )
+        except missingContract:
             specific_log.warn(
                 "Can't find matching IB contract for %s"
                 % str(contract_object_with_ib_data)
             )
-            return missing_contract
+            raise
 
         self.ib.reqMktData(ibcontract, "", False, False)
         ticker = self.ib.ticker(ibcontract)
@@ -103,17 +106,17 @@ class ibPriceClient(ibContractsClient):
 
         specific_log = contract_object_with_ib_data.specific_log(self.log)
 
-        ibcontract = self.ib_futures_contract(
-            contract_object_with_ib_data,
-            trade_list_for_multiple_legs=trade_list_for_multiple_legs,
-        )
-
-        if ibcontract is missing_contract:
+        try:
+            ibcontract = self.ib_futures_contract(
+                contract_object_with_ib_data,
+                trade_list_for_multiple_legs=trade_list_for_multiple_legs,
+            )
+        except missingContract:
             specific_log.warn(
                 "Can't find matching IB contract for %s"
                 % str(contract_object_with_ib_data)
             )
-            return missing_contract
+            raise
 
         self.ib.cancelMktData(ibcontract)
 
@@ -136,19 +139,19 @@ class ibPriceClient(ibContractsClient):
             specific_log.critical(error_msg)
             raise Exception(error_msg)
 
-        ibcontract = self.ib_futures_contract(contract_object_with_ib_data)
-
-        if ibcontract is missing_contract:
+        try:
+            ibcontract = self.ib_futures_contract(contract_object_with_ib_data)
+        except missingContract:
             specific_log.warn(
                 "Can't find matching IB contract for %s"
                 % str(contract_object_with_ib_data)
             )
-            return missing_contract
+            raise
 
-        recent_ib_time = self.ib.reqCurrentTime() - datetime.timedelta(seconds=60)
+        recent_time = datetime.datetime.now() - datetime.timedelta(seconds=60)
 
         tick_data = self.ib.reqHistoricalTicks(
-            ibcontract, recent_ib_time, "", tick_count, "BID_ASK", useRth=False
+            ibcontract, recent_time, "", tick_count, "BID_ASK", useRth=False
         )
 
         return tick_data
@@ -156,7 +159,7 @@ class ibPriceClient(ibContractsClient):
     def _get_generic_data_for_contract(
         self,
         ibcontract: ibContract,
-        log: logger = None,
+        log: pst_logger = None,
         bar_freq: Frequency = DAILY_PRICE_FREQ,
         whatToShow: str = "TRADES",
     ) -> pd.DataFrame:
@@ -176,7 +179,7 @@ class ibPriceClient(ibContractsClient):
             )
         except Exception as exception:
             log.warn(exception)
-            return missing_data
+            raise missingData
 
         price_data_raw = self._ib_get_historical_data_of_duration_and_barSize(
             ibcontract,
@@ -193,12 +196,12 @@ class ibPriceClient(ibContractsClient):
         return price_data_as_df
 
     def _raw_ib_data_to_df(
-        self, price_data_raw: pd.DataFrame, log: logger
+        self, price_data_raw: pd.DataFrame, log: pst_logger
     ) -> pd.DataFrame:
 
         if price_data_raw is None:
             log.warn("No price data from IB")
-            return missing_data
+            raise missingData
 
         price_data_as_df = price_data_raw[["open", "high", "low", "close", "volume"]]
 
@@ -219,15 +222,12 @@ class ibPriceClient(ibContractsClient):
         and adjusts yyyymm to closing vector
 
         :param timestamp_str: datetime.datetime
-        :return: pd.datetime
+        :return: datetime.datetime
         """
 
-        local_timestamp_ib = self._adjust_ib_time_to_local(timestamp_ib)
-        timestamp = pd.to_datetime(local_timestamp_ib)
+        timestamp = self._adjust_ib_time_to_local(timestamp_ib)
 
-        adjusted_ts = adjust_timestamp_to_include_notional_close_and_time_offset(
-            timestamp
-        )
+        adjusted_ts = replace_midnight_with_notional_closing_time(timestamp)
 
         return adjusted_ts
 
@@ -252,7 +252,7 @@ class ibPriceClient(ibContractsClient):
         durationStr: str = "1 Y",
         barSizeSetting: str = "1 day",
         whatToShow="TRADES",
-        log: logger = None,
+        log: pst_logger = None,
     ) -> pd.DataFrame:
         """
         Returns historical prices for a contract, up to today
@@ -274,6 +274,7 @@ class ibPriceClient(ibContractsClient):
             whatToShow=whatToShow,
             useRTH=True,
             formatDate=2,
+            timeout=TIMEOUT_SECONDS_ON_HISTORICAL_DATA,
         )
         df = util.df(bars)
 
@@ -323,7 +324,7 @@ def _get_barsize_and_duration_from_frequency(bar_freq: Frequency) -> (str, str):
 
 
 def _avoid_pacing_violation(
-    last_call_datetime: datetime.datetime, log: logger = logtoscreen("")
+    last_call_datetime: datetime.datetime, log: pst_logger = logtoscreen("")
 ):
     printed_warning_already = False
     while _pause_for_pacing(last_call_datetime):

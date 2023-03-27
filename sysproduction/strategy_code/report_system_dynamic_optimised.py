@@ -1,13 +1,13 @@
 import datetime
 import pandas as pd
 
-from syscore.objects import header, table, body_text
+from sysproduction.reporting.reporting_functions import table, header, body_text
 from sysdata.data_blob import dataBlob
 from sysobjects.production.backtest_storage import interactiveBacktest
 from sysproduction.strategy_code.report_system_classic import (
     report_system_classic_no_header_or_footer,
 )
-from sysproduction.data.positions import dataOptimalPositions
+from sysproduction.data.optimal_positions import dataOptimalPositions
 
 
 def report_system_dynamic(data: dataBlob, backtest: interactiveBacktest):
@@ -50,6 +50,9 @@ def get_optimal_positions_table_as_df(
         )
     )
     as_verbose_pd = list_of_positions.as_verbose_pd()
+
+    if len(as_verbose_pd) == 0:
+        return pd.DataFrame()
 
     subset_of_pd = as_verbose_pd[
         [

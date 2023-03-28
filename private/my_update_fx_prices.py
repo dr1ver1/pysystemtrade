@@ -95,11 +95,8 @@ def arcticUpdateFXspot():
             currency_code, fx_prices, ignore_duplication=True
         )
 
-
-
     # new_fx_prices = broker_fx_data.get_fx_prices(fx_code)  # returns fxPrices object
     # Need to get fx_prices from csv files
-    
 
     rows_added = db_fx_data.update_fx_prices_and_return_rows_added(
         fx_code, new_fx_prices, check_for_spike=True
@@ -110,9 +107,6 @@ def arcticUpdateFXspot():
         return failure
 
     return success
-
-
-
 
 
 if __name__ == "__main__":

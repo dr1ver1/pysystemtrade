@@ -10,7 +10,9 @@ if __name__ == "__main__":
     input("Will overwrite existing prices are you sure?! CTL-C to abort")
 
     arctic_fx_prices = arcticFxPricesData()
-    csv_fx_prices = csvFxPricesData("private.data.spot.barchart")   # DS: Added my folder as an argument (default is no argument)
+    csv_fx_prices = csvFxPricesData(
+        "private.data.spot.barchart"
+    )  # DS: Added my folder as an argument (default is no argument)
 
     currency_code = input("Currency code? <return for ALL currencies> ")
     if currency_code == "":

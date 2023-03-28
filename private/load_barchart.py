@@ -5,14 +5,13 @@
 import sysinit.futures.barchart_futures_contract_prices as bc
 
 
-# XXMYY_Barchart_Interactive_Chart*.csv Where XX is the two character barchart instrument identifier, 
-# eg ZW is Wheat, M is the future contract month (F=January, G=February... Z =December), YY is the two digit year code, and the rest is fluff. 
-# The little function strip_file_names renames them so they have the expected format: NNNN_YYYYMMDD.csv, 
-# where NNNN is my instrument code (at least four letters and usually way more), and YYYYMM00 is a numeric date format eg 20201200 
+# XXMYY_Barchart_Interactive_Chart*.csv Where XX is the two character barchart instrument identifier,
+# eg ZW is Wheat, M is the future contract month (F=January, G=February... Z =December), YY is the two digit year code, and the rest is fluff.
+# The little function strip_file_names renames them so they have the expected format: NNNN_YYYYMMDD.csv,
+# where NNNN is my instrument code (at least four letters and usually way more), and YYYYMM00 is a numeric date format eg 20201200
 # Options:
 # 1. rename existing files to expected input name format: XXMYY_blah.csv, call transfer_barchart_prices_to_arctic
-#** -> 2. rename existing files to expected output name format: NNNN_YYYYMMDD.csv, init_arctic_with_csv_futures_contract_prices
-
+# -> 2. rename existing files to expected output name format: NNNN_YYYYMMDD.csv, init_arctic_with_csv_futures_contract_prices
 
 
 # Override and modify barchart_csv_config:
@@ -32,4 +31,6 @@ if __name__ == "__main__":
     # modify flags as required
     datapath = "private.data.futures.barchart"
     # bc.transfer_barchart_prices_to_arctic(datapath)
-    bc.init_arctic_with_csv_futures_contract_prices(datapath=datapath, csv_config=barchart_csv_config)
+    bc.init_arctic_with_csv_futures_contract_prices(
+        datapath=datapath, csv_config=barchart_csv_config
+    )

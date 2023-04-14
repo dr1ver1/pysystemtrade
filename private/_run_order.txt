@@ -1,7 +1,26 @@
+# TODO: Add new instruments to instrumentconfig.csv
+AUD
+BUND
+COPPER
+COTTON
+EUA
+EUROSTX
+GAS_US
+GBPUSD
+GOLD
+HANG
+LEANHOG
+S&P
+SOYOIL
+US10U
+US30
+WHEAT
+WTI
+
 
 Ad Hoc:
 -------
-load_instr_roll_config.py - for new instruments. also for rolling???
+my_load_instr_roll_config.py - for new instruments. also for rolling???
 
 
 Daily Schedule:
@@ -9,3 +28,6 @@ Daily Schedule:
 C:\Users\david\OneDrive\VSCode Projects\BarchartData\createExcelData.py 
 load_barchart.py
 my_multipleprices_from_arcticprices_and_csv_calendars_to_arctic.py
+
+
+Need to make sure updated roll cals and always imported

@@ -6,8 +6,9 @@
 # sysinit.roll_parameters_csv_mongo.py has been copy and pasted into this script, in order to modify paths
 
 # For instruments_csv_mongo():
-from sysdata.mongodb.mongo_futures_instruments import mongoFuturesInstrumentData
+# from sysdata.mongodb.mongo_futures_instruments import mongoFuturesInstrumentData
 from sysdata.csv.csv_instrument_data import csvFuturesInstrumentData
+from sysdata.futures.instruments import futuresInstrumentData
 
 # For roll_parameters_csv_mongo():
 from sysdata.mongodb.mongo_roll_data import mongoRollParametersData
@@ -31,6 +32,8 @@ from sysdata.csv.csv_roll_parameters import csvRollParametersData
 # You'll see this pattern again and again, and I describe it further in part two of this document.
 
 # Make sure you are running a Mongo Database before running this.
+x = futuresInstrumentData()
+mdb = mongoFuturesInstrumentData()
 
 # Setting up some instrument configuration
 def instruments_csv_mongo():

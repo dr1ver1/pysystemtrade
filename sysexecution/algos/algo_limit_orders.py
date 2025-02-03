@@ -1,21 +1,5 @@
-"""
-Simplest possible execution method, one market order
-"""
-from copy import copy
-from sysexecution.orders.named_order_objects import missing_order
-from sysproduction.data.broker import dataBroker
-
 from sysexecution.algos.algo import Algo, limit_price_from_input, limit_order_type
-from sysexecution.algos.common_functions import (
-    post_trade_processing,
-    MESSAGING_FREQUENCY,
-    cancel_order,
-    file_log_report_market_order,
-)
-from sysdata.data_blob import dataBlob
-from sysexecution.orders.contract_orders import contractOrder
 from sysexecution.order_stacks.broker_order_stack import orderWithControls
-from sysexecution.orders.broker_orders import market_order_type
 
 
 class algoLimit(Algo):
@@ -29,7 +13,7 @@ class algoLimit(Algo):
 
     def submit_trade(self) -> orderWithControls:
         contract_order = self.contract_order
-        self.data.log.msg(
+        self.data.log.debug(
             "Submitting limit order for %s, limit price %f"
             % (str(contract_order), contract_order.limit_price)
         )

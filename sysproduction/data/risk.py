@@ -28,7 +28,6 @@ def get_covariance_matrix_for_instrument_returns(
     list_of_instruments: list,
     passed_correlation_estimation_parameters: dict = arg_not_supplied,
 ) -> covarianceEstimate:
-
     corr_matrix = get_correlation_matrix_for_instrument_returns(
         data,
         list_of_instruments,
@@ -50,7 +49,6 @@ def get_correlation_matrix_for_instrument_returns(
     list_of_instruments: list,
     passed_correlation_estimation_parameters: dict = arg_not_supplied,
 ) -> correlationEstimate:
-
     list_of_correlations = _replicate_creation_of_correlation_list_in_sim(
         data,
         list_of_instruments,
@@ -67,7 +65,6 @@ def _replicate_creation_of_correlation_list_in_sim(
     list_of_instruments: list,
     passed_correlation_estimation_parameters: dict = arg_not_supplied,
 ):
-
     ## double coding but too complex to do differently
 
     returns_as_pd = get_perc_returns_across_instruments(data, list_of_instruments)
@@ -137,9 +134,7 @@ def get_corr_params_and_func(
 ) -> tuple:
     if passed_correlation_estimation_parameters is arg_not_supplied:
         config = data.config
-        corr_params = config.get_element_or_missing_data(
-            "instrument_returns_correlation"
-        )
+        corr_params = config.get_element("instrument_returns_correlation")
     else:
         corr_params = passed_correlation_estimation_parameters
 
@@ -161,13 +156,33 @@ def get_perc_of_strategy_capital_for_instrument_per_contract(
     return exposure_per_contract / capital_base_fx
 
 
+def get_current_ann_stdev_of_prices(data, instrument_code):
+    try:
+        current_stdev_ann_price_units = get_ann_ts_stdev_of_prices(
+            data=data, instrument_code=instrument_code
+        ).iloc[-1]
+    except:
+        ## can happen for brand new instruments not properly loaded
+        return np.nan
+
+    return current_stdev_ann_price_units
+
+
+def get_ann_ts_stdev_of_prices(data, instrument_code):
+    stdev_ann_price_units = get_daily_ts_stdev_of_prices(
+        data=data, instrument_code=instrument_code
+    )
+
+    return stdev_ann_price_units * ROOT_BDAYS_INYEAR
+
+
 def get_daily_ts_stdev_of_prices(data, instrument_code):
     dailyreturns = get_daily_returns_for_risk(data, instrument_code)
     volconfig = copy(vol_config(data))
 
     # volconfig contains 'func' and some other arguments
     # we turn func which could be a string into a function, and then
-    # call it with the other ags
+    # call it with the other args
 
     volfunction = resolve_function(volconfig.pop("func"))
     vol = volfunction(dailyreturns, **volconfig)

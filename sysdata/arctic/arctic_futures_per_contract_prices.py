@@ -6,13 +6,13 @@ Read and write data from mongodb for individual futures contracts
 from syscore.dateutils import Frequency, MIXED_FREQ
 
 from sysdata.arctic.arctic_connection import arcticData
+from sysobjects.contracts import listOfFuturesContracts
 from sysdata.futures.futures_per_contract_prices import (
     futuresContractPriceData,
-    listOfFuturesContracts,
 )
 from sysobjects.futures_per_contract_prices import futuresContractPrices
 from sysobjects.contracts import futuresContract, get_code_and_id_from_contract_key
-from syslogdiag.log_to_screen import logtoscreen
+from syslogging.logger import *
 
 import pandas as pd
 
@@ -24,10 +24,7 @@ class arcticFuturesContractPriceData(futuresContractPriceData):
     Class to read / write futures price data to and from arctic
     """
 
-    def __init__(
-        self, mongo_db=None, log=logtoscreen("arcticFuturesContractPriceData")
-    ):
-
+    def __init__(self, mongo_db=None, log=get_logger("arcticFuturesContractPriceData")):
         super().__init__(log=log)
 
         self._arctic_connection = arcticData(CONTRACT_COLLECTION, mongo_db=mongo_db)
@@ -59,7 +56,6 @@ class arcticFuturesContractPriceData(futuresContractPriceData):
     def _get_prices_at_frequency_for_contract_object_no_checking(
         self, futures_contract_object: futuresContract, frequency: Frequency
     ) -> futuresContractPrices:
-
         ident = from_contract_and_freq_to_key(
             futures_contract_object, frequency=frequency
         )
@@ -76,7 +72,7 @@ class arcticFuturesContractPriceData(futuresContractPriceData):
     ):
         """
         Write prices
-        CHECK prices are overriden on second write
+        CHECK prices are overridden on second write
 
         :param futures_contract_object: futuresContract
         :param futures_price_data: futuresContractPriceData
@@ -95,8 +91,6 @@ class arcticFuturesContractPriceData(futuresContractPriceData):
         futures_price_data: futuresContractPrices,
         frequency: Frequency,
     ):
-
-        log = futures_contract_object.log(self.log)
         ident = from_contract_and_freq_to_key(
             futures_contract_object, frequency=frequency
         )
@@ -104,14 +98,16 @@ class arcticFuturesContractPriceData(futuresContractPriceData):
 
         self.arctic_connection.write(ident, futures_price_data_as_pd)
 
-        log.msg(
+        self.log.debug(
             "Wrote %s lines of prices for %s at %s to %s"
             % (
                 len(futures_price_data),
                 str(futures_contract_object.key),
                 str(frequency),
                 str(self),
-            )
+            ),
+            **futures_contract_object.log_attributes(),
+            method="temp",
         )
 
     def get_contracts_with_merged_price_data(self) -> listOfFuturesContracts:
@@ -129,7 +125,6 @@ class arcticFuturesContractPriceData(futuresContractPriceData):
     def get_contracts_with_price_data_for_frequency(
         self, frequency: Frequency
     ) -> listOfFuturesContracts:
-
         list_of_contract_and_freq_tuples = (
             self._get_contract_and_frequencies_with_price_data()
         )
@@ -153,7 +148,6 @@ class arcticFuturesContractPriceData(futuresContractPriceData):
     def has_price_data_for_contract_at_frequency(
         self, contract_object: futuresContract, frequency: Frequency
     ) -> bool:
-
         return self.arctic_connection.has_keyname(
             from_contract_and_freq_to_key(contract_object, frequency=frequency)
         )
@@ -192,15 +186,15 @@ class arcticFuturesContractPriceData(futuresContractPriceData):
     def _delete_prices_at_frequency_for_contract_object_with_no_checks_be_careful(
         self, futures_contract_object: futuresContract, frequency: Frequency
     ):
-        log = futures_contract_object.log(self.log)
-
         ident = from_contract_and_freq_to_key(
             contract=futures_contract_object, frequency=frequency
         )
         self.arctic_connection.delete(ident)
-        log.msg(
+        self.log.debug(
             "Deleted all prices for %s from %s"
-            % (futures_contract_object.key, str(self))
+            % (futures_contract_object.key, str(self)),
+            **futures_contract_object.log_attributes(),
+            method="temp",
         )
 
 

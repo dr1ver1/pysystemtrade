@@ -14,7 +14,6 @@ class accountSubsystem(accountBufferingSubSystemLevel):
     def pandl_across_subsystems(
         self, delayfill=True, roundpositions=False
     ) -> accountCurveGroup:
-
         instrument_list = self.get_instrument_list()
 
         pandl_across_subsystems = self.pandl_across_subsystems_given_instrument_list(
@@ -27,7 +26,6 @@ class accountSubsystem(accountBufferingSubSystemLevel):
     def pandl_across_subsystems_given_instrument_list(
         self, instrument_list: list, delayfill=True, roundpositions=False
     ) -> accountCurveGroup:
-
         dict_of_pandl_across_subsystems = dict(
             [
                 (
@@ -82,7 +80,7 @@ class accountSubsystem(accountBufferingSubSystemLevel):
         0.23422378634127036
         """
 
-        self.log.msg(
+        self.log.debug(
             "Calculating pandl for subsystem for instrument %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -104,9 +102,24 @@ class accountSubsystem(accountBufferingSubSystemLevel):
     def _pandl_for_subsystem_with_SR_costs(
         self, instrument_code, delayfill=True, roundpositions=False
     ) -> accountCurve:
+        pandl_calculator = self._pandl_calculator_for_subsystem_with_SR_costs(
+            instrument_code=instrument_code,
+            delayfill=delayfill,
+            roundpositions=roundpositions,
+        )
 
-        price = self.get_daily_price(instrument_code)
+        account_curve = accountCurve(pandl_calculator)
+
+        return account_curve
+
+    @diagnostic(not_pickable=True)
+    def _pandl_calculator_for_subsystem_with_SR_costs(
+        self, instrument_code, delayfill=True, roundpositions=False
+    ) -> pandlCalculationWithSRCosts:
         positions = self.get_buffered_subsystem_position(instrument_code)
+        price = self.get_instrument_prices_for_position_or_forecast(
+            instrument_code, position_or_forecast=positions
+        )
 
         fx = self.get_fx_rate(instrument_code)
 
@@ -114,7 +127,7 @@ class accountSubsystem(accountBufferingSubSystemLevel):
         daily_returns_volatility = self.get_daily_returns_volatility(instrument_code)
 
         ## following doesn't include IDM or instrument weight
-        average_position = self.get_volatility_scalar(instrument_code)
+        average_position = self.get_average_position_at_subsystem_level(instrument_code)
 
         subsystem_turnover = self.subsystem_turnover(instrument_code)
         annualised_SR_cost = self.get_SR_cost_given_turnover(
@@ -136,18 +149,31 @@ class accountSubsystem(accountBufferingSubSystemLevel):
             roundpositions=roundpositions,
         )
 
-        account_curve = accountCurve(pandl_calculator)
-
-        return account_curve
+        return pandl_calculator
 
     @diagnostic(not_pickable=True)
     def _pandl_for_subsystem_with_cash_costs(
         self, instrument_code, delayfill=True, roundpositions=True
     ) -> accountCurve:
+        pandl_calculator = self._pandl_calculator_for_subsystem_with_cash_costs(
+            instrument_code=instrument_code,
+            delayfill=delayfill,
+            roundpositions=roundpositions,
+        )
 
+        account_curve = accountCurve(pandl_calculator)
+
+        return account_curve
+
+    @diagnostic(not_pickable=True)
+    def _pandl_calculator_for_subsystem_with_cash_costs(
+        self, instrument_code, delayfill=True, roundpositions=True
+    ) -> pandlCalculationWithCashCostsAndFills:
         raw_costs = self.get_raw_cost_data(instrument_code)
-        price = self.get_daily_price(instrument_code)
         positions = self.get_buffered_subsystem_position(instrument_code)
+        price = self.get_instrument_prices_for_position_or_forecast(
+            instrument_code, position_or_forecast=positions
+        )  ### here!
 
         fx = self.get_fx_rate(instrument_code)
 
@@ -171,6 +197,4 @@ class accountSubsystem(accountBufferingSubSystemLevel):
             rolls_per_year=rolls_per_year,
         )
 
-        account_curve = accountCurve(pandl_calculator)
-
-        return account_curve
+        return pandl_calculator

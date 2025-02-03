@@ -2,16 +2,6 @@ import datetime
 from syscore.constants import arg_not_supplied
 from sysexecution.orders.named_order_objects import missing_order, no_parent
 
-from sysdata.mongodb.mongo_order_stack import (
-    mongoInstrumentOrderStackData,
-    mongoContractOrderStackData,
-    mongoBrokerOrderStackData,
-)
-from sysdata.mongodb.mongo_historic_orders import (
-    mongoStrategyHistoricOrdersData,
-    mongoContractHistoricOrdersData,
-    mongoBrokerHistoricOrdersData,
-)
 from sysdata.production.historic_orders import (
     brokerHistoricOrdersData,
     contractHistoricOrdersData,
@@ -19,7 +9,7 @@ from sysdata.production.historic_orders import (
 )
 from sysdata.data_blob import dataBlob
 
-from sysobjects.fills import listOfFills
+from sysobjects.fills import ListOfFills
 from sysexecution.order_stacks.broker_order_stack import brokerOrderStackData
 from sysexecution.order_stacks.contract_order_stack import contractOrderStackData
 from sysexecution.order_stacks.instrument_order_stack import instrumentOrderStackData
@@ -34,6 +24,16 @@ from sysexecution.orders.list_of_orders import listOfOrders
 
 from sysobjects.production.tradeable_object import instrumentStrategy, futuresContract
 
+from sysproduction.data.production_data_objects import (
+    get_class_for_data_type,
+    INSTRUMENT_ORDER_STACK_DATA,
+    CONTRACT_ORDER_STACK_DATA,
+    BROKER_HISTORIC_ORDERS_DATA,
+    STRATEGY_HISTORIC_ORDERS_DATA,
+    CONTRACT_HISTORIC_ORDERS_DATA,
+    BROKER_ORDER_STACK_DATA,
+)
+
 
 class dataOrders(object):
     def __init__(self, data: dataBlob = arg_not_supplied):
@@ -42,12 +42,12 @@ class dataOrders(object):
             data = dataBlob()
         data.add_class_list(
             [
-                mongoInstrumentOrderStackData,
-                mongoContractOrderStackData,
-                mongoBrokerOrderStackData,
-                mongoContractHistoricOrdersData,
-                mongoStrategyHistoricOrdersData,
-                mongoBrokerHistoricOrdersData,
+                get_class_for_data_type(INSTRUMENT_ORDER_STACK_DATA),
+                get_class_for_data_type(CONTRACT_ORDER_STACK_DATA),
+                get_class_for_data_type(BROKER_ORDER_STACK_DATA),
+                get_class_for_data_type(STRATEGY_HISTORIC_ORDERS_DATA),
+                get_class_for_data_type(CONTRACT_HISTORIC_ORDERS_DATA),
+                get_class_for_data_type(BROKER_HISTORIC_ORDERS_DATA),
             ]
         )
         self._data = data
@@ -120,7 +120,6 @@ class dataOrders(object):
     def get_historic_contract_order_ids_in_date_range(
         self, period_start: datetime.datetime, period_end: datetime.datetime
     ) -> list:
-
         order_id_list = (
             self.db_contract_historic_orders_data.get_list_of_order_ids_in_date_range(
                 period_start, period_end
@@ -132,7 +131,6 @@ class dataOrders(object):
     def get_historic_instrument_order_ids_in_date_range(
         self, period_start: datetime.datetime, period_end: datetime.datetime
     ) -> list:
-
         order_id_list = (
             self.db_strategy_historic_orders_data.get_list_of_order_ids_in_date_range(
                 period_start, period_end
@@ -160,7 +158,7 @@ class dataOrders(object):
 
     def get_fills_history_for_contract(
         self, futures_contract: futuresContract
-    ) -> listOfFills:
+    ) -> ListOfFills:
         ## We get this from broker fills, as they have leg by leg information
         list_of_fills = (
             self.db_broker_historic_orders_data.get_fills_history_for_contract(
@@ -172,7 +170,7 @@ class dataOrders(object):
 
     def get_fills_history_for_instrument_strategy(
         self, instrument_strategy: instrumentStrategy
-    ) -> listOfFills:
+    ) -> ListOfFills:
         list_of_fills = self.db_strategy_historic_orders_data.get_fills_history_for_instrument_strategy(
             instrument_strategy
         )
@@ -182,7 +180,6 @@ class dataOrders(object):
     def get_historic_broker_order_from_order_id_with_execution_data(
         self, order_id: int
     ) -> brokerOrderWithParentInformation:
-
         order = self.get_historic_broker_order_from_order_id(order_id)
 
         contract_order = self.get_parent_contract_order_for_historic_broker_order_id(
@@ -192,7 +189,7 @@ class dataOrders(object):
             self.get_parent_instrument_order_for_historic_broker_order_id(order_id)
         )
 
-        augmented_order = brokerOrderWithParentInformation.create_augemented_order(
+        augmented_order = brokerOrderWithParentInformation.create_augmented_order(
             order, contract_order=contract_order, instrument_order=instrument_order
         )
 

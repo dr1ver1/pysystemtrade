@@ -1,6 +1,5 @@
 import datetime
 
-from syscore.constants import fill_exceeds_trade
 from sysexecution.orders.named_order_objects import missing_order
 from sysexecution.order_stacks.order_stack import orderStackData
 from sysexecution.orders.broker_orders import brokerOrder
@@ -16,11 +15,9 @@ class brokerOrderStackData(orderStackData):
         self, broker_order_id: int, matched_broker_order: brokerOrder
     ):
         db_broker_order = self.get_order_with_id_from_stack(broker_order_id)
-        result = db_broker_order.add_execution_details_from_matched_broker_order(
+        db_broker_order.add_execution_details_from_matched_broker_order(
             matched_broker_order
         )
-        if result is fill_exceeds_trade:
-            return fill_exceeds_trade
 
         self._change_order_on_stack(broker_order_id, db_broker_order)
 
@@ -34,7 +31,7 @@ class brokerOrderStackData(orderStackData):
         return missing_order
 
     def get_order_with_id_from_stack(self, order_id: int) -> brokerOrder:
-        # probably will be overriden in data implementation
+        # probably will be overridden in data implementation
         # only here so the appropriate type is shown as being returned
 
         order = self.stack.get(order_id, missing_order)
@@ -56,7 +53,6 @@ class orderWithControls(object):
         control_object,
         ticker_object: tickerObject = None,
     ):
-
         self._order = broker_order
         self._control_object = control_object
         self._ticker = ticker_object

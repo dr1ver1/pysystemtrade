@@ -1,7 +1,7 @@
 from copy import copy
 from dataclasses import dataclass
 
-from syscore.exceptions import missingContract, missingData
+from syscore.exceptions import missingContract, missingData, orderCannotBeModified
 from syscore.constants import arg_not_supplied
 from sysexecution.orders.named_order_objects import missing_order
 
@@ -84,8 +84,6 @@ class Algo(object):
         ticker_object: tickerObject = None,
         broker_account: str = arg_not_supplied,
     ):
-
-        log = contract_order.log_with_attributes(self.data.log)
         broker = self.data_broker.get_broker_name()
 
         if broker_account is arg_not_supplied:
@@ -114,13 +112,8 @@ class Algo(object):
                 limit_price_from=limit_price_from,
                 input_limit_price=input_limit_price,
             )
-        elif order_type == market_order_type:
-            limit_price = None
         else:
-            error_msg = "Order type %s not valid for broker orders" % str(order_type)
-            log.critical(error_msg)
-
-            return missing_order
+            limit_price = None
 
         broker_order = create_new_broker_order_from_contract_order(
             contract_order,
@@ -134,9 +127,11 @@ class Algo(object):
             limit_price=limit_price,
         )
 
-        log.msg(
+        self.data.log.debug(
             "Created a broker order %s (not yet submitted or written to local DB)"
-            % str(broker_order)
+            % str(broker_order),
+            **contract_order.log_attributes(),
+            method="temp",
         )
 
         placed_broker_order_with_controls = self.data_broker.submit_broker_order(
@@ -144,12 +139,17 @@ class Algo(object):
         )
 
         if placed_broker_order_with_controls is missing_order:
-            log.warn("Order could not be submitted")
+            self.data.log.warning(
+                "Order could not be submitted",
+                **contract_order.log_attributes(),
+                method="temp",
+            )
             return missing_order
 
-        log = placed_broker_order_with_controls.order.log_with_attributes(log)
-        log.msg(
-            "Submitted order to IB %s" % str(placed_broker_order_with_controls.order)
+        self.data.log.debug(
+            "Submitted order to IB %s" % str(placed_broker_order_with_controls.order),
+            **placed_broker_order_with_controls.order.log_attributes(),
+            method="temp",
         )
 
         placed_broker_order_with_controls.add_or_replace_ticker(ticker_object)
@@ -163,7 +163,6 @@ class Algo(object):
         # to provide a benchmark for execution purposes
         # (optionally) to set limit prices
         ##
-        log = contract_order.log_with_attributes(self.data.log)
 
         # Get the first 'reference' tick
         try:
@@ -173,9 +172,11 @@ class Algo(object):
                 )
             )
         except missingData:
-            log.warn(
+            self.data.log.warning(
                 "Can't get market data for %s so not trading with limit order %s"
-                % (contract_order.instrument_code, str(contract_order))
+                % (contract_order.instrument_code, str(contract_order)),
+                **contract_order.log_attributes(),
+                method="temp",
             )
             raise
 
@@ -200,7 +201,6 @@ class Algo(object):
         input_limit_price: float = None,
         limit_price_from: str = limit_price_from_input,
     ) -> float:
-
         assert limit_price_from in sources_of_limit_price
 
         if limit_price_from == limit_price_from_input:
@@ -230,10 +230,11 @@ class Algo(object):
         try:
             min_tick = self.data_broker.get_min_tick_size_for_contract(contract)
         except missingContract:
-            log = contract_order.log_with_attributes(self.data.log)
-            log.warn(
+            self.data.log.warning(
                 "Couldn't find min tick size for %s, not rounding limit price %f"
-                % (str(contract), limit_price)
+                % (str(contract), limit_price),
+                **contract_order.log_attributes(),
+                method="temp",
             )
 
             return limit_price
@@ -241,3 +242,17 @@ class Algo(object):
         rounded_limit_price = min_tick * round(limit_price / min_tick)
 
         return rounded_limit_price
+
+    def file_log_report_market_order(
+        self, broker_order_with_controls: orderWithControls
+    ):
+        ticker_object = broker_order_with_controls.ticker
+        current_tick = str(ticker_object.current_tick())
+
+        log_report = "Market order execution current tick %s" % current_tick
+
+        self.data.log.debug(
+            log_report,
+            **broker_order_with_controls.order.log_attributes(),
+            method="temp",
+        )

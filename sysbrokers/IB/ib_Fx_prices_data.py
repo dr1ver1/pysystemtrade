@@ -8,16 +8,14 @@ from sysbrokers.IB.config.ib_fx_config import (
     ibFXConfig,
 )
 from sysbrokers.broker_fx_prices_data import brokerFxPricesData
-from syscore.exceptions import missingData
+from syscore.exceptions import missingData, missingInstrument, missingFile
 from sysdata.data_blob import dataBlob
 from sysobjects.spot_fx_prices import fxPrices
-from syslogdiag.log_to_screen import logtoscreen
-from syslogdiag.pst_logger import CURRENCY_CODE_LOG_LABEL
-from syscore.constants import missing_instrument
+from syslogging.logger import *
 
 
 class ibFxPricesData(brokerFxPricesData):
-    def __init__(self, ibconnection, data: dataBlob, log=logtoscreen("ibFxPricesData")):
+    def __init__(self, ibconnection, data: dataBlob, log=get_logger("ibFxPricesData")):
         super().__init__(log=log, data=data)
         self._ibconnection = ibconnection
         self._dataBlob = data
@@ -40,17 +38,24 @@ class ibFxPricesData(brokerFxPricesData):
         return client
 
     def get_list_of_fxcodes(self) -> list:
-        config_data = self._get_ib_fx_config()
-        list_of_codes = get_list_of_codes(log=list, config_data=config_data)
+        try:
+            config_data = self._get_ib_fx_config()
+        except missingFile:
+            self.log.warning("Can't get list of fxcodes for IB as config file missing")
+            return []
+
+        list_of_codes = get_list_of_codes(config_data=config_data)
 
         return list_of_codes
 
     def _get_fx_prices_without_checking(self, currency_code: str) -> fxPrices:
-        ib_config_for_code = self._get_config_info_for_code(currency_code)
-
-        if ib_config_for_code is missing_instrument:
-            log = self.log.setup(**{CURRENCY_CODE_LOG_LABEL: currency_code})
-            log.warn("Can't get prices as missing IB config for %s" % currency_code)
+        try:
+            ib_config_for_code = self._get_config_info_for_code(currency_code)
+        except missingInstrument:
+            self.log.warning(
+                "Can't get prices as missing IB config for %s" % currency_code,
+                **{CURRENCY_CODE_LOG_LABEL: currency_code, "method": "temp"},
+            )
             return fxPrices.create_empty()
 
         data = self._get_fx_prices_with_ib_config(currency_code, ib_config_for_code)
@@ -62,12 +67,16 @@ class ibFxPricesData(brokerFxPricesData):
     ) -> fxPrices:
         raw_fx_prices_as_series = self._get_raw_fx_prices(ib_config_for_code)
 
-        log = self.log.setup(**{CURRENCY_CODE_LOG_LABEL: currency_code})
+        log_attrs = {
+            CURRENCY_CODE_LOG_LABEL: currency_code,
+            "method": "temp",
+        }
 
         if len(raw_fx_prices_as_series) == 0:
-            log.warn(
+            self.log.warning(
                 "No available IB prices for %s %s"
-                % (currency_code, str(ib_config_for_code))
+                % (currency_code, str(ib_config_for_code)),
+                **log_attrs,
             )
             return fxPrices.create_empty()
 
@@ -79,7 +88,10 @@ class ibFxPricesData(brokerFxPricesData):
         # turn into a fxPrices
         fx_prices = fxPrices(raw_fx_prices)
 
-        log.msg("Downloaded %d prices" % len(fx_prices))
+        self.log.debug(
+            "Downloaded %d prices" % len(fx_prices),
+            **log_attrs,
+        )
 
         return fx_prices
 
@@ -96,10 +108,17 @@ class ibFxPricesData(brokerFxPricesData):
         return raw_fx_prices_as_series
 
     def _get_config_info_for_code(self, currency_code: str) -> ibFXConfig:
+        try:
+            config_data = self._get_ib_fx_config()
+        except missingFile as e:
+            self.log.warning(
+                "Can't get IB FX config for %s as config file missing" % currency_code,
+                **{CURRENCY_CODE_LOG_LABEL: currency_code, "method": "temp"},
+            )
+            raise missingInstrument from e
 
-        config_data = self._get_ib_fx_config()
         ib_config_for_code = config_info_for_code(
-            config_data=config_data, log=self.log, currency_code=currency_code
+            config_data=config_data, currency_code=currency_code
         )
 
         return ib_config_for_code
@@ -113,7 +132,6 @@ class ibFxPricesData(brokerFxPricesData):
         return config
 
     def _get_and_set_ib_config_from_file(self) -> pd.DataFrame:
-
         config_data = get_ib_config_from_file(log=self.log)
         self._config = config_data
 

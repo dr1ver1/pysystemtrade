@@ -192,7 +192,6 @@ def add_optimal_position_entry_row_to_positions_as_df(
     existing_optimal_positions_as_df: pd.DataFrame,
     position_entry: simpleOptimalPosition,
 ) -> pd.DataFrame:
-
     _check_append_positions_okay(
         existing_optimal_positions_as_df=existing_optimal_positions_as_df,
         position_entry=position_entry,
@@ -237,7 +236,7 @@ def _check_append_positions_okay(
         )
 
 
-## IMPORTANT NOTE: if you create a new kind of optimal position which does not inherite from
+## IMPORTANT NOTE: if you create a new kind of optimal position which does not inherit from
 ##    baseOptimalPosition directly, need to manually add it here
 
 MASTER_LIST_OF_OPTIMAL_POSITION_CLASSES = baseOptimalPosition.__subclasses__()
@@ -279,7 +278,6 @@ class instrumentStrategyAndOptimalPosition(object):
         instrument_strategy: instrumentStrategy,
         optimal_position_object: simpleOptimalPosition,
     ):
-
         self.instrument_strategy = instrument_strategy
         self.optimal_position = optimal_position_object
 
@@ -295,7 +293,15 @@ class instrumentStrategyAndOptimalPosition(object):
         return self.instrument_strategy.key
 
     def is_for_strategy(self, strategy_name: str):
-        return self.instrument_strategy.strategy_name == strategy_name
+        return self.strategy_name == strategy_name
+
+    @property
+    def strategy_name(self) -> str:
+        return self.instrument_strategy.strategy_name
+
+    @property
+    def instrument_code(self) -> str:
+        return self.instrument_strategy.instrument_code
 
 
 class instrumentStrategyWithOptimalAndCurrentPosition(object):
@@ -360,6 +366,31 @@ class listOfOptimalAndCurrentPositionsAcrossInstrumentStrategies(list):
 
 class listOfOptimalPositionsAcrossInstrumentStrategies(list):
     # list of instrumentStrategyAndOptimalPosition
+    def filter_removing_strategies(self, list_of_strategies_to_remove):
+        filtered_list = [
+            instrument_strategy_with_optimal_and_current_position
+            for instrument_strategy_with_optimal_and_current_position in self
+            if instrument_strategy_with_optimal_and_current_position.strategy_name
+            not in list_of_strategies_to_remove
+        ]
+
+        return listOfOptimalPositionsAcrossInstrumentStrategies(filtered_list)
+
+    def filter_removing_instruments(self, list_of_instruments_to_remove):
+        filtered_list = [
+            instrument_strategy_with_optimal_and_current_position
+            for instrument_strategy_with_optimal_and_current_position in self
+            if instrument_strategy_with_optimal_and_current_position.instrument_code
+            not in list_of_instruments_to_remove
+        ]
+
+        return listOfOptimalPositionsAcrossInstrumentStrategies(filtered_list)
+
+    def list_of_strategies(self) -> list:
+        list_of_strategies = [position.strategy_name for position in self]
+
+        return list_of_strategies
+
     def filter_by_strategy(self, strategy_name: str):
         filtered_list = [
             instrument_strategy_with_optimal_and_current_position
@@ -391,7 +422,6 @@ class listOfOptimalPositionsAcrossInstrumentStrategies(list):
     def add_positions(
         self, position_list: listOfInstrumentStrategyPositions
     ) -> listOfOptimalAndCurrentPositionsAcrossInstrumentStrategies:
-
         list_of_optimal_and_current = []
         for opt_pos_object in self:
             instrument_strategy = opt_pos_object.instrument_strategy

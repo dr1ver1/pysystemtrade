@@ -3,7 +3,7 @@ from copy import copy
 from syscore.objects import resolve_function
 from syscore.genutils import str2Bool
 
-from syslogdiag.log_to_screen import logtoscreen, pst_logger
+from syslogging.logger import *
 
 from sysquant.fitting_dates import fitDates
 from sysquant.estimators.correlations import correlationEstimate
@@ -27,11 +27,10 @@ class portfolioOptimiser:
     def __init__(
         self,
         net_returns: returnsForOptimisation,
-        log: pst_logger = logtoscreen("optimiser"),
+        log=get_logger("optimiser"),
         method="handcraft",
         **weighting_args,
     ):
-
         self._net_returns = net_returns
         self._log = log
         self._weighting_args = weighting_args
@@ -62,7 +61,6 @@ class portfolioOptimiser:
         return str2Bool(self.weighting_args["cleaning"])
 
     def calculate_weights_for_period(self, fit_period: fitDates) -> portfolioWeights:
-
         if fit_period.no_data:
             return one_over_n_weights_given_data(self.net_returns)
 
@@ -76,7 +74,6 @@ class portfolioOptimiser:
     def clean_weights_for_period(
         self, weights: portfolioWeights, fit_period: fitDates
     ) -> portfolioWeights:
-
         if fit_period.no_data:
             return weights
 
@@ -88,7 +85,6 @@ class portfolioOptimiser:
         return cleaned_weights
 
     def calculate_weights_given_data(self, fit_period: fitDates) -> portfolioWeights:
-
         estimates_and_portfolio_weights = (
             self.get_weights_and_returned_estimates_for_period(fit_period)
         )
@@ -99,7 +95,6 @@ class portfolioOptimiser:
     def get_weights_and_returned_estimates_for_period(
         self, fit_period: fitDates
     ) -> estimatesWithPortfolioWeights:
-
         method = self.method
         weighting_args = self._weighting_args
 
@@ -138,27 +133,37 @@ class portfolioOptimiser:
     def calculate_correlation_matrix_for_period(
         self, fit_period: fitDates
     ) -> correlationEstimate:
-        return self.calculate_estimate_for_period(
-            fit_period, param_entry="correlation_estimate"
-        )
-
-    def calculate_stdev_for_period(self, fit_period: fitDates) -> stdevEstimates:
-        return self.calculate_estimate_for_period(
-            fit_period, param_entry="vol_estimate"
-        )
-
-    def calculate_mean_for_period(self, fit_period: fitDates) -> meanEstimates:
-        return self.calculate_estimate_for_period(
-            fit_period, param_entry="mean_estimate"
-        )
-
-    def calculate_estimate_for_period(
-        self, fit_period: fitDates, param_entry: str = "mean_estimate"
-    ):
-        estimator = self._generic_estimator(param_entry)
+        estimator = self.correlation_estimator()
         estimate = estimator.calculate_estimate_for_period(fit_period)
 
         return estimate
+
+    def calculate_stdev_for_period(self, fit_period: fitDates) -> stdevEstimates:
+        estimator = self.stdev_estimator()
+        estimate = estimator.calculate_estimate_for_period(fit_period)
+
+        return estimate
+
+    def calculate_mean_for_period(self, fit_period: fitDates) -> meanEstimates:
+        estimator = self.mean_estimator()
+        estimate = estimator.calculate_estimate_for_period(fit_period)
+
+        return estimate
+
+    def correlation_estimator(self):
+        estimator = self._generic_estimator("correlation_estimate")
+
+        return estimator
+
+    def mean_estimator(self):
+        estimator = self._generic_estimator("mean_estimate")
+
+        return estimator
+
+    def stdev_estimator(self):
+        estimator = self._generic_estimator("vol_estimate")
+
+        return estimator
 
     def _generic_estimator(
         self, param_entry: str = "mean_estimate"

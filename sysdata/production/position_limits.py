@@ -8,7 +8,7 @@ When we want to trade (create an instrument / strategy order) we check that the 
 """
 from syscore.exceptions import missingData
 from sysdata.base_data import baseData
-from syslogdiag.log_to_screen import logtoscreen
+from syslogging.logger import *
 
 from sysobjects.production.position_limits import (
     positionLimitForInstrument,
@@ -21,13 +21,12 @@ from sysobjects.production.tradeable_object import (
 
 
 class positionLimitData(baseData):
-    def __init__(self, log=logtoscreen("Overrides")):
+    def __init__(self, log=get_logger("Overrides")):
         super().__init__(log=log)
 
     def get_position_limit_object_for_instrument_strategy(
         self, instrument_strategy: instrumentStrategy
     ) -> positionLimitForStrategyInstrument:
-
         try:
             position_limit = self._get_abs_position_limit_for_instrument_strategy(
                 instrument_strategy
@@ -46,7 +45,6 @@ class positionLimitData(baseData):
     def get_position_limit_object_for_instrument(
         self, instrument_code: str
     ) -> positionLimitForInstrument:
-
         try:
             position_limit = self._get_abs_position_limit_for_instrument(
                 instrument_code
@@ -79,7 +77,6 @@ class positionLimitData(baseData):
         raise NotImplementedError
 
     def get_all_instrument_strategies_with_limits(self) -> listOfInstrumentStrategies:
-
         raise NotImplementedError
 
     def set_position_limit_for_instrument_strategy(
@@ -98,5 +95,4 @@ class positionLimitData(baseData):
         raise NotImplementedError
 
     def delete_position_limit_for_instrument(self, instrument_code: str):
-
         raise NotImplementedError

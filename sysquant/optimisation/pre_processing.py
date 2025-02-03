@@ -25,7 +25,6 @@ class returnsPreProcessor(object):
         cost_multiplier: float = 1.0,
         **_ignored_kwargs,
     ):
-
         self._dict_of_returns = dict_of_returns
 
         self._frequency = frequency
@@ -129,14 +128,13 @@ class returnsPreProcessor(object):
     def get_gross_returns_for_asset_name_before_equalisation(
         self, asset_name: str
     ) -> dictOfReturnsForOptimisation:
-
         if self.pool_gross_returns:
             return self.get_pooled_gross_returns_dict()
         else:
             return self.get_unpooled_gross_returns_dict_for_asset_name(asset_name)
 
     def get_pooled_gross_returns_dict(self) -> dictOfReturnsForOptimisation:
-        self.log.msg("Using pooled gross returns")
+        self.log.debug("Using pooled gross returns")
         dict_of_returns = self.dict_of_returns
 
         gross_returns_dict = dict_of_returns.get_returns_for_all_assets()
@@ -146,7 +144,7 @@ class returnsPreProcessor(object):
     def get_unpooled_gross_returns_dict_for_asset_name(
         self, asset_name: str
     ) -> dictOfReturnsForOptimisation:
-        self.log.msg("Using only returns of %s for gross returns" % asset_name)
+        self.log.debug("Using only returns of %s for gross returns" % asset_name)
 
         gross_returns_dict = self.dict_of_returns.get_returns_for_asset_as_single_dict(
             asset_name, type="gross"
@@ -160,7 +158,7 @@ class returnsPreProcessor(object):
         dict_of_cost_SR = self.get_dict_of_unadjusted_cost_SR_for_asset_name(asset_name)
         cost_multiplier = self.cost_multiplier
         if cost_multiplier != 1.0:
-            self.log.msg("Applying cost multiplier of %f" % cost_multiplier)
+            self.log.debug("Applying cost multiplier of %f" % cost_multiplier)
             dict_of_cost_SR = dict_of_cost_SR.apply_cost_multiplier(
                 cost_multiplier=cost_multiplier
             )
@@ -180,7 +178,7 @@ class returnsPreProcessor(object):
             return self.get_unpooled_cost_SR_for_asset_name(asset_name)
 
     def get_dict_of_pooled_SR_costs(self, asset_name: str) -> dictOfSR:
-        self.log.msg("Using pooled cost SR")
+        self.log.debug("Using pooled cost SR")
 
         dict_of_costs = self.get_dict_of_cost_dicts_by_asset_name()
 
@@ -189,7 +187,7 @@ class returnsPreProcessor(object):
         return pooled_dict_of_costs
 
     def get_pooled_SR_costs_using_turnover(self, asset_name: str) -> dictOfSR:
-        self.log.msg("Using pooled turnover cost SR for %s" % asset_name)
+        self.log.debug("Using pooled turnover cost SR for %s" % asset_name)
         ## Costs we use are: costs for our instrument, multiplied by average turnover across instruments
         dict_of_costs = self.get_dict_of_cost_dicts_by_asset_name()
 
@@ -202,7 +200,7 @@ class returnsPreProcessor(object):
         return costs
 
     def get_unpooled_cost_SR_for_asset_name(self, asset_name) -> dictOfSR:
-        self.log.msg("Using unpooled cost SR for %s" % asset_name)
+        self.log.debug("Using unpooled cost SR for %s" % asset_name)
 
         costs = self.dict_of_returns.get_annual_SR_dict_for_asset(
             asset_name, type="costs"
@@ -219,7 +217,6 @@ class returnsPreProcessor(object):
 def _calculate_pooled_turnover_costs(
     asset_name: str, turnovers: dict, dict_of_costs: dictOfSRacrossAssets
 ) -> dictOfSR:
-
     column_names = turnovers.keys()
     column_SR_dict = dict(
         [
@@ -244,7 +241,6 @@ def _calculate_pooled_turnover_costs(
 def _calculate_pooled_turnover_cost_for_column(
     asset_name: str, turnovers: dict, dict_of_costs: dict, column_name
 ) -> float:
-
     cost_per_turnover_this_asset = _calculate_cost_per_turnover(
         asset_name,
         column_name=column_name,
@@ -265,7 +261,6 @@ def _average_turnover(turnovers, column_name):
 def _calculate_cost_per_turnover(
     asset_name: str, column_name: str, turnovers: dict, dict_of_costs: dict
 ):
-
     turnover = _turnover_for_asset_and_column(asset_name, column_name, turnovers)
     if turnover > 0:
         cost = _cost_for_asset_and_column(asset_name, column_name, dict_of_costs)
@@ -278,10 +273,8 @@ def _calculate_cost_per_turnover(
 
 
 def _turnover_for_asset_and_column(asset_name: str, column_name: str, turnovers: dict):
-
     return turnovers[column_name][asset_name]
 
 
 def _cost_for_asset_and_column(asset_name: str, column_name: str, dict_of_costs: dict):
-
     return dict_of_costs[asset_name][column_name]

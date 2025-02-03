@@ -1,5 +1,5 @@
 import pytest
-from sysinit.futures.rollcalendars_from_arcticprices_to_csv import (
+from sysinit.futures.rollcalendars_from_db_prices_to_csv import (
     build_and_write_roll_calendar,
     check_saved_roll_calendar,
 )
@@ -9,12 +9,11 @@ from sysdata.csv.csv_roll_parameters import csvRollParametersData
 
 
 class TestFuturesInit:
-
     csv_config = ConfigCsvFuturesPrices(
         input_date_index_name="Time",
         input_skiprows=0,
         input_skipfooter=0,
-        input_date_format="%Y-%m-%dT%H:%M:%S%z",
+        input_date_format="%Y-%m-%dT%H:%M:%S",
         input_column_mapping=dict(
             OPEN="Open", HIGH="High", LOW="Low", FINAL="Close", VOLUME="Volume"
         ),

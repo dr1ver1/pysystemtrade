@@ -1,6 +1,5 @@
 from syscore.objects import get_methods
-from syslogdiag.pst_logger import pst_logger
-from syslogdiag.log_to_screen import logtoscreen
+from syslogging.logger import *
 from systems.basesystem import System
 
 
@@ -39,12 +38,13 @@ class SystemStage(object):
         self._parent = system
 
         # and a log
-        log = system.log.setup(stage=self.name)
-        self._log = log
+        self._log = get_logger("base_system", {STAGE_LOG_LABEL: self.name})
 
     @property
-    def log(self) -> pst_logger:
-        log = getattr(self, "_log", logtoscreen(""))
+    def log(self):
+        log = getattr(
+            self, "_log", get_logger("base_system", {STAGE_LOG_LABEL: self.name})
+        )
         return log
 
     @property

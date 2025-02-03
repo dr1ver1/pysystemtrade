@@ -80,7 +80,6 @@ class instrumentMetaData(object):
         PerTrade: float = 0.0,
         Region: str = "",
     ):
-
         self.Description = Description
         self.Currency = Currency
         self.Pointsize = _zero_if_nan(Pointsize)
@@ -223,7 +222,6 @@ class assetClassesAndInstruments(dict):
     def all_instruments_in_asset_class(
         self, asset_class: str, must_be_in=arg_not_supplied
     ) -> list:
-
         asset_class_instrument_list = [
             instrument
             for instrument, item_asset_class in self.items()
@@ -314,6 +312,23 @@ class instrumentCosts(object):
     def value_of_pertrade_commission(self):
         return self._value_of_pertrade_commission
 
+    def calculate_sr_cost(
+        self,
+        block_price_multiplier: float,
+        price: float,
+        ann_stdev_price_units: float,
+        blocks_traded: float = 1.0,
+    ) -> float:
+        cost_instrument_currency = self.calculate_cost_instrument_currency(
+            blocks_traded=blocks_traded,
+            block_price_multiplier=block_price_multiplier,
+            price=price,
+        )
+
+        ann_stdev_instrument_currency = ann_stdev_price_units * block_price_multiplier
+
+        return cost_instrument_currency / ann_stdev_instrument_currency
+
     def calculate_cost_percentage_terms(
         self, blocks_traded: float, block_price_multiplier: float, price: float
     ) -> float:
@@ -328,13 +343,19 @@ class instrumentCosts(object):
         return cost_in_percentage_terms
 
     def calculate_cost_instrument_currency(
-        self, blocks_traded: float, block_price_multiplier: float, price: float
+        self,
+        blocks_traded: float,
+        block_price_multiplier: float,
+        price: float,
+        include_slippage: bool = True,
     ) -> float:
-
         value_per_block = price * block_price_multiplier
-        slippage = self.calculate_slippage_instrument_currency(
-            blocks_traded, block_price_multiplier=block_price_multiplier
-        )
+        if include_slippage:
+            slippage = self.calculate_slippage_instrument_currency(
+                blocks_traded, block_price_multiplier=block_price_multiplier
+            )
+        else:
+            slippage = 0
 
         commission = self.calculate_total_commission(
             blocks_traded, value_per_block=value_per_block
@@ -365,7 +386,7 @@ class instrumentCosts(object):
 
     def calculate_percentage_commission(self, blocks_traded, price_per_block):
         trade_value = self.calculate_trade_value(blocks_traded, price_per_block)
-        return self._percentage_cost * trade_value
+        return self.percentage_cost * trade_value
 
     def calculate_trade_value(self, blocks_traded, value_per_block):
         return abs(blocks_traded) * value_per_block

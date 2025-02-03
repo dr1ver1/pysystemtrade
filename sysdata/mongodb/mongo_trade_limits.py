@@ -6,7 +6,7 @@ from sysdata.production.trade_limits import (
 )
 from sysobjects.production.tradeable_object import instrumentStrategy
 from sysdata.mongodb.mongo_generic import mongoDataWithMultipleKeys
-from syslogdiag.log_to_screen import logtoscreen
+from syslogging.logger import *
 
 LIMIT_STATUS_COLLECTION = "limit_status"
 
@@ -24,7 +24,7 @@ class mongoTradeLimitData(tradeLimitData):
 
     """
 
-    def __init__(self, mongo_db=None, log=logtoscreen("mongoTradeLimitData")):
+    def __init__(self, mongo_db=None, log=get_logger("mongoTradeLimitData")):
         super().__init__(log=log)
         self._mongo_data = mongoDataWithMultipleKeys(
             LIMIT_STATUS_COLLECTION, mongo_db=mongo_db
@@ -42,7 +42,6 @@ class mongoTradeLimitData(tradeLimitData):
     def _get_trade_limit_as_dict_or_missing_data(
         self, instrument_strategy: instrumentStrategy, period_days: int
     ) -> dict:
-
         instrument_strategy_key = instrument_strategy.key
         dict_of_keys = {
             INSTRUMENT_STRATEGY_KEY: instrument_strategy_key,
@@ -60,7 +59,6 @@ class mongoTradeLimitData(tradeLimitData):
     def _get_old_style_trade_limit_as_dict_or_missing_data(
         self, instrument_strategy: instrumentStrategy, period_days: int
     ) -> dict:
-
         dict_of_keys = {
             LEGACY_INSTRUMENT_KEY: instrument_strategy.instrument_code,
             LEGACY_STRATEGY_KEY: instrument_strategy.strategy_name,
@@ -95,7 +93,6 @@ class mongoTradeLimitData(tradeLimitData):
         self.mongo_data.delete_data_without_any_warning(dict_of_keys)
 
     def _get_all_limit_keys(self) -> listOfInstrumentStrategyKeyAndDays:
-
         list_of_result_dicts = self.mongo_data.get_list_of_all_dicts()
 
         list_of_results = [

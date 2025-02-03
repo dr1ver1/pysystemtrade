@@ -18,6 +18,7 @@ And documents you should read after this one:
 - [Instruments](/docs/instruments.md)
 - [Dashboard and monitor](/docs/dashboard_and_monitor.md)
 - [Production strategy changes](/docs/production_strategy_changes.md)
+- [Recent undocumented changes](/docs/recent_changes.md)
 
 *IMPORTANT: Make sure you know what you are doing. All financial trading offers the possibility of loss. Leveraged trading, such as futures trading, may result in you losing all your money, and still owing more. Backtested results are no guarantee of future performance. No warranty is offered or implied for this software. I can take no responsibility for any losses caused by live trading using pysystemtrade. Use at your own risk.*
 
@@ -50,9 +51,15 @@ Table of Contents
       * [Echos: stdout output](#echos-stdout-output)
          * [Cleaning old echo files](#cleaning-old-echo-files)
       * [Logging](#logging)
+      * [socket](#socket)
+         * [socket server as a service](#socket-server-as-a-service)
+      * [console](#console)
+      * [email](#email)
          * [Adding logging to your code](#adding-logging-to-your-code)
-         * [Getting log data back](#getting-log-data-back)
+         * [Examples](#examples)
          * [Cleaning old logs](#cleaning-old-logs)
+            * [Echos](#echos)
+            * [Logs](#logs)
       * [Reporting](#reporting)
 * [Positions and order levels](#positions-and-order-levels)
    * [Instrument level](#instrument-level)
@@ -61,12 +68,9 @@ Table of Contents
 * [The journey of an order](#the-journey-of-an-order)
    * [Optimal positions](#optimal-positions)
       * [Optimal position for roll orders](#optimal-position-for-roll-orders)
-      * [Optimal positions for intra-instrument spread orders](#optimal-positions-for-intra-instrument-spread-orders)
-      * [Optimal positions for intra-instrument spread orders](#optimal-positions-for-intra-instrument-spread-orders-1)
    * [Strategy order handling](#strategy-order-handling)
       * [Instrument orders in detail:](#instrument-orders-in-detail)
       * [Strategy order handling for roll orders](#strategy-order-handling-for-roll-orders)
-      * [Strategy order handling for spread orders](#strategy-order-handling-for-spread-orders)
       * [Overrides](#overrides)
    * [Stack handler](#stack-handler)
    * [Instrument order netting (to be implemented)](#instrument-order-netting-to-be-implemented)
@@ -75,10 +79,6 @@ Table of Contents
       * [Contract order creation - conditional orders](#contract-order-creation---conditional-orders)
       * [Contract order creation - passive roll status](#contract-order-creation---passive-roll-status)
       * [Instrument and contract order creation - active roll orders](#instrument-and-contract-order-creation---active-roll-orders)
-      * [Contract order creation: Intra market spread](#contract-order-creation-intra-market-spread)
-         * [Intra market spreads and rolls](#intra-market-spreads-and-rolls)
-      * [Contract order creation: Inter market spread](#contract-order-creation-inter-market-spread)
-         * [Inter market spreads and rolls](#inter-market-spreads-and-rolls)
    * [Manual trades](#manual-trades)
    * [Broker order creation and execution](#broker-order-creation-and-execution)
       * [Before an order is traded](#before-an-order-is-traded)
@@ -110,6 +110,7 @@ Table of Contents
       * [Get spot FX data from interactive brokers, write to MongoDB (Daily)](#get-spot-fx-data-from-interactive-brokers-write-to-mongodb-daily)
       * [Update sampled contracts (Daily)](#update-sampled-contracts-daily)
       * [Update futures contract historical price data (Daily)](#update-futures-contract-historical-price-data-daily)
+         * [Set times when different regions download prices](#set-times-when-different-regions-download-prices)
       * [Update multiple and adjusted prices (Daily)](#update-multiple-and-adjusted-prices-daily)
       * [Update capital and p&amp;l by polling brokerage account](#update-capital-and-pl-by-polling-brokerage-account)
       * [Allocate capital to strategies](#allocate-capital-to-strategies)
@@ -135,8 +136,8 @@ Table of Contents
             * [View processes](#view-processes)
             * [Change status of process](#change-status-of-process)
             * [Global status change](#global-status-change)
-            * [Mark as close](#mark-as-finished)
-            * [Mark all dead processes as close](#mark-all-dead-processes-as-finished)
+            * [Mark as close](#mark-as-close)
+            * [Mark all dead processes as close](#mark-all-dead-processes-as-close)
             * [View process configuration](#view-process-configuration)
          * [Update configuration](#update-configuration)
       * [Interactive diagnostics](#interactive-diagnostics)
@@ -148,8 +149,6 @@ Table of Contents
          * [Reports](#reports)
          * [Logs, errors, emails](#logs-errors-emails)
             * [View stored emails](#view-stored-emails)
-            * [View errors](#view-errors)
-            * [View logs](#view-logs)
          * [View prices](#view-prices)
          * [View capital](#view-capital)
          * [Positions and orders](#positions-and-orders)
@@ -186,7 +185,7 @@ Table of Contents
       * [Backup state files](#backup-state-files)
       * [Backup mongo dump](#backup-mongo-dump)
       * [Start up script](#start-up-script)
-   * [Scripts under other (non\-linux) operating systems](#scripts-under-other-non-linux-operating-systems)
+   * [Scripts under other (non-linux) operating systems](#scripts-under-other-non-linux-operating-systems)
 * [Scheduling](#scheduling)
    * [Issues to consider when constructing the schedule](#issues-to-consider-when-constructing-the-schedule)
    * [Choice of scheduling systems](#choice-of-scheduling-systems)
@@ -208,7 +207,8 @@ Table of Contents
       * [System backtest .yaml config file(s)](#system-backtest-yaml-config-files)
       * [Control config files](#control-config-files)
       * [Broker and data source specific configuration files](#broker-and-data-source-specific-configuration-files)
-      * [Only used when setting up the system](#only-used-when-setting-up-the-system)
+      * [Instrument and roll configuration](#instrument-and-roll-configuration)
+      * [Set up configuration](#set-up-configuration)
    * [Capital](#capital)
       * [Large changes in capital](#large-changes-in-capital)
       * [Withdrawals and deposits of cash or stock](#withdrawals-and-deposits-of-cash-or-stock)
@@ -235,6 +235,7 @@ Table of Contents
       * [Risk report](#risk-report)
       * [Liquidity report](#liquidity-report)
       * [Costs report](#costs-report)
+   * [Customize report generation in the run_report process](#customize-report-generation-in-the-run_report-process)
 
 Created by [gh-md-toc](https://github.com/ekalinin/github-markdown-toc)
 
@@ -629,13 +630,12 @@ Linux script:
 . $SCRIPT_PATH/backup_arctic_to_csv
 ```
 
-
 ## Echos, Logging, diagnostics and reporting
 
 We need to know what our system is doing, especially if it is fully automated. Here are the methods by which this should be done:
 
 - Echos of stdout output from processes that are running
-- Storage of logging output in a database, tagged with keys to identify them
+- Logging output in a file, tagged with keys to identify them
 - Storage of diagnostics in a database, tagged with keys to identify them
 - the option to run reports both scheduled and ad-hoc, which can optionally be automatically emailed
 
@@ -660,93 +660,147 @@ Note: the configuration variable echo_extension will need changing in `private_c
 
 ### Logging
 
-Logging in pysystemtrade is done via loggers. See the [user guide for more detail](/docs/backtesting.md#logging). The logging levels are:
+pysystemtrade uses the [Python logging module](https://docs.python.org/3.10/library/logging.html). See the [user guide for more detail](/docs/backtesting.md#logging) about logging in sim. Python logging is powerful and flexible, and log messages can be [formatted as you like, and sent virtually anywhere](https://docs.python.org/3.10/howto/logging.html#logging-advanced-tutorial) by providing your own config. But this section describes the default provided production setup. 
+
+In production, the requirements are more complex than in sim. As well as the context relevant attributes (that we have with sim), we also need
+- ability to log to the same file from different processes
+- output to console for echo files
+- critical level messages to trigger an email
+
+Configure the default production setup with:
 
 ```
-self.log.msg("this is a normal message")
-self.log.terse("not really used in production code since everything is logged by default, but if we were only running log=terse then you'd see this but not normal .msg")
-self.log.warn("this is a warning message means something unexpected has happened but probably no big deal")
-self.log.error("this error message means something bad but recoverable has happened")
-self.log.critical("this critical message will always be printed, and an email will be sent to the user if emails are set up. Use this if user action is required, or if a process cannot continue")
+PYSYS_LOGGING_CONFIG=syslogging.logging_prod.yaml
 ```
 
-The default pst_logger in production code is to the mongo database. This method will also try and email the user if a critical message is logged.
+At the client side, (pysystemtrade) there are three handlers: socket, console, and email. There is a server (separate process) for the socket handler. More details on each below
+
+### socket
+
+Python doesn't support more than one process writing to a file at the same time. So, on the client side, log messages are serialised and sent over the wire. A simple TCP socket server receives, de-serialises, and writes them to disk. The socket server needs to be running first. The simplest way to start it:
+
+```
+python -u $PYSYS_CODE/syslogging/server.py
+```
+
+But that would write logs to the current working directory. Probably not what you want. Instead, pass the log file path 
+
+```
+python -u $PYSYS_CODE/syslogging/server.py --file /home/path/to/your/pysystemtrade.log
+```
+
+By default, the server accepts connections on port 6020. But if you want to use another
+
+```
+python -u $PYSYS_CODE/syslogging/server.py --port 6021 --file /home/path/to/your/pysystemtrade.log
+```
+
+The socket server also handles rotating the log files daily; the default setup rotates creates a new log at midnight each day, keeping the last 5 days' files. So after a week, the log directory file listing would look something like 
+
+```
+-rw-r--r--  1 user group 19944754 May  4 15:42 pysystemtrade.log
+-rw-r--r--  1 user group 19030250 Apr 24 22:16 pysystemtrade.log.2023-04-24
+-rw-r--r--  1 user group  6178163 Apr 25 22:16 pysystemtrade.log.2023-04-25
+-rw-r--r--  1 user group  9465225 Apr 26 22:16 pysystemtrade.log.2023-04-26
+-rw-r--r--  1 user group  4593885 Apr 27 16:53 pysystemtrade.log.2023-04-27
+-rw-r--r--  1 user group  4414970 May  3 22:16 pysystemtrade.log.2023-05-03
+```
+
+The server needs to be running all the time. It needs to run in the background, start up on reboot, restart automatically in case of failure, etc. So a better way to do it would be to make it a service
+
+#### socket server as a service
+
+There is an example Linux systemd service file provided, see `examples/logging/logging_server.service`. And a setup guide [here](https://tecadmin.net/setup-autorun-python-script-using-systemd/). Basic setup for Debian/Ubuntu is:
+
+- create a new file at `/etc/systemd/system/logging_server.service`
+- paste the example file into it
+- update the paths in `ExecStart`. If using a virtual environment, make sure to use the correct path to Python 
+- update the `User` and `Group` values, so the log file is not owned by root
+- update the path in `Environment`, if using a custom private config directory
+- run the following commands to start/stop/restart etc
+
+```
+# reload daemon
+sudo systemctl daemon-reload
+
+# enable service (restart on boot)
+sudo systemctl enable log_server.service
+
+# view service status
+sudo systemctl status log_server.service 
+
+# start service
+sudo systemctl start log_server.service
+
+# stop service
+sudo systemctl stop log_server.service
+
+# restart
+sudo systemctl restart log_server.service
+
+# view service log (not pysystemtrade log)
+sudo journalctl -e -u log_server.service
+```
+
+### console
+
+All log messages also get sent to console, as with sim. The supplied `crontab` entries would therefore also pipe their output to the echo files
+
+### email
+
+There is a special SMTP handler, for CRITICAL log messages only. This handler uses the configured pysystemtrade email settings to send those messages as emails
+
 
 #### Adding logging to your code
 
-The default for logging is to do this via mongodb. Here is an example of logging code:
+See the [logging docs](https://docs.python.org/3.10/library/logging.html) for usage examples. There are four ways to manage context attributes: 
+* *overwrite* - passed attributes are merged with any existing, overwriting duplicates (the default)
+* *preserve* - passed attributes are merged with any existing, preserving duplicates
+* *clear* - existing attributes are cleared, passed ones added
+* *temp* - passed attributes will only be used for one invocation
+
+#### Examples
 
 ```python
-from syslogdiag.pst_logger import logToMongod as pst_logger
+# merging attributes: method 'overwrite' (default if no method supplied)
+overwrite = get_logger("Overwrite", {"type": "first"})
+overwrite.info("overwrite, type 'first'")
+overwrite.info(
+    "overwrite, type 'second', stage 'one'",
+    method="overwrite",
+    type="second",
+    stage="one",
+)
 
+# merging attributes: method 'preserve'
+preserve = get_logger("Preserve", {"type": "first"})
+preserve.info("preserve, type 'first'")
+preserve.info(
+    "preserve, type 'first', stage 'one'", method="preserve", type="second", stage="one"
+)
 
-def top_level_function():
-    """
-    This is a function that's called as the top level of a process
-    """
+# merging attributes: method 'clear'
+clear = get_logger("Clear", {"type": "first", "stage": "one"})
+clear.info("clear, type 'first', stage 'one'")
+clear.info("clear, type 'second', no stage", method="clear", type="second")
+clear.info("clear, no attributes", method="clear")
 
-    # can optionally pass mongodb connection attributes here
-    log = pst_logger("top-level-function")
-
-    # note use of log.setup when passing log to other components, this creates a copy of the existing log with an additional attribute set
-    conn = connectionIB(client=100, log=log.setup(component="IB-connection"))
-
-    ibfxpricedata = ibFxPricesData(conn, log=log.setup(component="ibFxPricesData"))
-
-    arcticfxdata = arcticFxPricesData(log=log.setup(component="arcticFxPricesData"))
-
-    list_of_codes_all = ibfxpricedata.get_list_of_fxcodes()  # codes must be in .csv file /sysbrokers/IB/ibConfigSpotFx.csv
-    log.msg("FX Codes: %s" % str(list_of_codes_all))
-    for fx_code in list_of_codes_all:
-
-        # Using log.label permanently adds the labelled attribute (although in this case it will be replaced on each iteration of the loop
-        log.label(currency_code=fx_code)
-        new_fx_prices = ibfxpricedata.get_fx_prices(fx_code)
-
-        if len(new_fx_prices) == 0:
-            log.error("Error trying to get data for %s" % fx_code)
-            continue
-
-
-
+# merging attributes: method 'temp'
+temp = get_logger("temp", {"type": "first"})
+temp.info("type should be 'first'")
+temp.info(
+    "type should be 'second' temporarily",
+    method="temp",
+    type="second",
+)
+temp.info("type should be back to 'first'")
 ```
-
-The following should be used as logging attributes (failure to do so will break reporting code):
-
-- type: the argument passed when the pst_logger is setup. Should be the name of the top level calling function. Production types include price collection, execution and so on.
-- stage: Used by stages in System objects, such as 'rawdata'
-- component: other parts of the top level function that have their own loggers
-- currency_code: Currency code (used for fx), format 'GBPUSD'
-- instrument_code: Self explanatory
-- contract_date: Self explanatory, format 'yyyymmdd'
-- instrument_order_id, contract_order_id, broker_order_id: Self explanatory, used for live trading
-- strategy_name: Self explanatory
-
-
-#### Getting log data back
-
-Python:
-
-```python
-from syslogdiag.pst_logger import accessLogFromMongodb
-
-# can optionally pass mongodb connection attributes here
-mlog = accessLogFromMongodb()
-# Return a list of strings per log line
-mlog.get_log_items(
-    dict(type="top-level-function"))  # any attribute directory here is fine as a filter, defaults to last days results
-# Printout log entries
-mlog.print_log_items(dict(type="top-level-function"), lookback_days=7)  # get last weeks worth
-# Return a list of logEntry objects, useful for dissecting
-mlog.get_log_items_as_entries(dict(type="top-level-function"))
-```
-
-Alternatively you can use the [interactive diagnostics](#view-logs) process to get old log data.
 
 #### Cleaning old logs
 
+##### Echos
 
-This code is run automatically from the [daily cleaning process](#clean-up-old-logs).
+There is some code to clean up **echo** files. This code is run automatically from the [daily cleaning process](#clean-up-old-logs).
 
 Python:
 
@@ -756,6 +810,10 @@ clean_truncate_log_files()
 ```
 
 It defaults to deleting anything more than 30 days old.
+
+##### Logs
+
+With the provided production logging config, the cleaning of **log** files is managed by the Python logging server. Default config is to keep the last 5 days of production logs. To adjust this, see [syslogging/server.py](syslogging/server.py) 
 
 
 ### Reporting
@@ -1621,7 +1679,7 @@ Linux script:
 
 Called by: `run_systems`
 
-The code to run each strategies backtest is defined in the configuration parameter in the control_config.yaml file (or overriden in the private_control_config.yaml file): `process_configuration_methods/run_systems/strategy_name/`. For example:
+The code to run each strategy's backtest is defined in the configuration parameter in the control_config.yaml file (or overridden in the private_control_config.yaml file): `process_configuration_methods/run_systems/strategy_name/`. For example:
 
 ```
 process_configuration_methods:
@@ -1665,7 +1723,7 @@ Linux script:
 Called by: `run_strategy_order_generator`
 
 
-The code to run each strategy's backtest is defined in the configuration parameter in the control_config.yaml file (or overriden in the private_control_config.yaml file): `process_configuration_methods/run_systems/strategy_name/`. For example:
+The code to run each strategy's backtest is defined in the configuration parameter in the control_config.yaml file (or overridden in the private_control_config.yaml file): `process_configuration_methods/run_systems/strategy_name/`. For example:
 
 
 ```
@@ -1906,7 +1964,7 @@ We can set the maximum allowable position that can be held in a given instrument
 
 Autopopulate uses current levels of risk to estimate the appropriate position limit. So it will make position limits smaller when risk is higher, and vice versa. It makes a lot of assumptions when setting limits: that all your strategies have the same risk limit (which you can set), and the same IDM (also can be modified), and that all instruments have the same instrument weight (which you can set). It does not use actual instrument weights, and it only sets limits that are global for a particular instrument.
 
-The dynamic optimisation strategy will also use position limits in it's optimisation in production (not in backtests, since fixed position limits make no sense for a historical backtest).
+The dynamic optimisation strategy will also use position limits in its optimisation in production (not in backtests, since fixed position limits make no sense for a historical backtest).
 
 #### Trade control / override
 
@@ -2050,28 +2108,6 @@ Allows you to look at various system diagnostics.
 ##### View stored emails
 
 The system sends emails quite a bit: when critical errors occur, when reports are sent, and when price spikes occur. To avoid spamming a user, it won't send an email with the same subject line as a previous email sent in the last 24 hours. Instead these emails are stored, and if you view them here they will be printed and then deleted from the store. The most common case is if you get a large price move which affects many different contracts for the same instrument; the first spike email will be sent, and the rest stored.
-
-##### View errors
-
-Log entries are tagged with a level; higher levels are more likely to be serious errors. You can view log entries for any time period at a given level. In theory this could be ordinary messages, but you'd be better off using 'view logs' which allows you to filter logs further.
-
-##### View logs
-
-You can view logs filtered by any group of attributes, over a given period. Log attributes are selected iteratively, until you have narrowed down exactly what you want to look at.
-
-Alternatively you can do this in python directly:
-
-```python
-from sysproduction._DEPRECATED.logs import diagLogs
-
-d = diagLogs()
-lookback_days = 1
-d.get_list_of_unique_log_attribute_keys(
-    lookback_days=lookback_days)  # what attributes do we have eg type, instrument_code...
-d.get_list_of_values_for_log_attribute("type", lookback_days=lookback_days)  # what value can an attribute take
-d.get_log_items(dict(instrument_code="EDOLLAR", type="process_fills_stack"),
-                lookback_days=lookback_days)  # get the log items with some attribute dict
-```
 
 
 #### View prices
@@ -2325,8 +2361,10 @@ Every day we generate echo files with extension .txt; this process renames ones 
 ### Backup Arctic data to .csv files
 
 Python:
+
 ```python
-from sysproduction.backup_arctic_to_csv import backup_arctic_to_csv
+from sysproduction.backup_db_to_csv import backup_arctic_to_csv
+
 backup_arctic_to_csv()
 ```
 
@@ -2518,7 +2556,7 @@ Useful things to note about the crontab:
 
 #### Process configuration
 
-Process configuration is governed by the following config parameters (in [/syscontrol/control_config.yaml](/syscontrol/control_config.yaml), or these will be overriden by /private/private_control_config.yaml):
+Process configuration is governed by the following config parameters (in [/syscontrol/control_config.yaml](/syscontrol/control_config.yaml), or these will be overridden by /private/private_control_config.yaml):
 
 -  `process_configuration_start_time`: when the process starts (default 00:01)
 - `process_configuration_stop_time`: when the process ends, regardless of any method configuration (default 23:50)
@@ -2747,7 +2785,7 @@ The following are configuration options that are not in defaults.yaml and *may* 
 - `email_server`: this is the outgoing server
 
 
-The following are configuration options that are in defaults.yaml and can be overriden in private_config.yaml:
+The following are configuration options that are in defaults.yaml and can be overridden in private_config.yaml:
 
 [Backup paths](#data-backup)
 - `backtest_store_directory` parent directory, backtests are stored under strategy_name subdirectory
@@ -2786,7 +2824,7 @@ Outside of the backtest code, in production configuration options are pulled in 
 
 ### Control config files
 
-As discussed above, these are used purely for control and monitoring purposes in [/syscontrol/control_config.yaml](/syscontrol/control_config.yaml), overriden by /private/private_control_config.yaml).
+As discussed above, these are used purely for control and monitoring purposes in [/syscontrol/control_config.yaml](/syscontrol/control_config.yaml), overridden by /private/private_control_config.yaml).
 
 ### Broker and data source specific configuration files
 
@@ -2807,7 +2845,7 @@ The following are .csv configurations used in both production and sim:
 ### Set up configuration
 
 
-The following are used when initialising the database with it's initial configuration, but will also be used in the simulation environment:
+The following are used when initialising the database with its initial configuration, but will also be used in the simulation environment:
 
 - [/data/futures/csvconfig/spreadcosts.csv](/data/futures/csvconfig/spreadcosts.csv) 
 
@@ -2864,7 +2902,7 @@ You can also change other values in the interactive tool, but be careful and mak
 
 ## Strategies
 
-Each strategy is defined in the config parameter `strategy_list`, found either in the defaults.yaml file or overriden in private yaml configuration. The following shows the parameters for an example strategy, named (appropriately enough) `example`.
+Each strategy is defined in the config parameter `strategy_list`, found either in the defaults.yaml file or overridden in private yaml configuration. The following shows the parameters for an example strategy, named (appropriately enough) `example`.
 
 ```
 strategy_list:
@@ -2878,7 +2916,7 @@ strategy_list:
 
 ### Strategy capital
 
-Strategy capital is allocated from [total capital](#capital). This is done by the scripted function, [update strategy capital](#allocate-capital-to-strategies). It is controlled by the configuration element below (in the defaults.yaml file, or overriden in private_config.yaml).
+Strategy capital is allocated from [total capital](#capital). This is done by the scripted function, [update strategy capital](#allocate-capital-to-strategies). It is controlled by the configuration element below (in the defaults.yaml file, or overridden in private_config.yaml).
 
 ```
 strategy_capital_allocation:
@@ -2892,7 +2930,7 @@ The allocation calls the function specified, with any other parameters passed as
 
 #### Risk target
 
-The actual risk a strategy will take depends on both it's capital and it's risk target. The risk target is set in the configuration option, `percentage_vol_target`, in the backtest configuration .yaml file for the relevant strategy (if not supplied, the defaults.yaml value is used; this is *not* overriden by private_config.yaml). Risk targets can be different across strategies.
+The actual risk a strategy will take depends on both it's capital and it's risk target. The risk target is set in the configuration option, `percentage_vol_target`, in the backtest configuration .yaml file for the relevant strategy (if not supplied, the defaults.yaml value is used; this is *not* overridden by private_config.yaml). Risk targets can be different across strategies.
 
 #### Changing risk targets and/or capital
 
@@ -3615,7 +3653,7 @@ V2X                            [20201118, 20201216] 2020-10-15 09:43:30  (1, -1)
 
 The strategy report is bespoke to a strategy; it will load the last backtest file generated and report diagnostics from it. On a daily basis it runs for all strategies. On an ad hoc basis, it can be run for all or a single strategy.
 
-The strategy reporting is determined by the parameter `strategy_list/strategy_name/reporting_code/function` in default.yaml or overriden in the private config .yaml file. The 'classic' reporting function is `sysproduction.strategy_code.report_system_classic.report_system_classic`
+The strategy reporting is determined by the parameter `strategy_list/strategy_name/reporting_code/function` in default.yaml or overridden in the private config .yaml file. The 'classic' reporting function is `sysproduction.strategy_code.report_system_classic.report_system_classic`
 
 Here is an example, with annotations added in quotes (""):
 

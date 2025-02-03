@@ -1,13 +1,12 @@
 import datetime
 from copy import copy
-from syscore.constants import success, failure
 from sysexecution.orders.named_order_objects import (
     missing_order,
     no_order_id,
     no_children,
 )
 
-from syslogdiag.log_to_screen import logtoscreen
+from syslogging.logger import *
 from sysexecution.orders.list_of_orders import listOfOrders
 from sysexecution.orders.base_orders import Order, overFilledOrder
 from sysexecution.trade_qty import tradeQuantity
@@ -51,7 +50,7 @@ class orderStackData(object):
 
     """
 
-    def __init__(self, log=logtoscreen("order-stack")):
+    def __init__(self, log=get_logger("order-stack")):
         self.log = log
 
     def __repr__(self):
@@ -88,35 +87,29 @@ class orderStackData(object):
             return []
 
         list_of_order_ids = []
-        status = success
         for order in list_of_orders:
-            log = order.log_with_attributes(self.log)
             order.lock_order()
             try:
                 order_id = self.put_order_on_stack(order)
             except Exception as e:
-                log.warn(
+                self.log.warning(
                     "Failed to put order %s on stack error %s, rolling back entire transaction"
-                    % (str(order), str(e))
+                    % (str(order), str(e)),
+                    **order.log_attributes(),
+                    method="temp",
                 )
-                status = failure
-                break
+
+                # rollback any orders we did manage to add
+                self.rollback_list_of_orders_on_stack(list_of_order_ids)
+                error_msg = (
+                    "Didn't put list of %d orders on stack but did manage to rollback"
+                    % len(list_of_orders)
+                )
+                self.log.warning(error_msg)
+                raise failureWithRollback(error_msg) from e
+
             else:
                 list_of_order_ids.append(order_id)
-
-        # At this point we either have total failure (list_of_child_ids is empty, status failure),
-        #    or partial failure (list of child_ids is part filled, status failure)
-        #    or total success
-
-        if status is failure:
-            # rollback the orders we did manage to add
-            self.rollback_list_of_orders_on_stack(list_of_order_ids)
-            error_msg = (
-                "Didn't put list of %d orders on stack but did manage to rollback"
-                % len(list_of_orders)
-            )
-            self.log.warn(error_msg)
-            raise failureWithRollback(error_msg)
 
         # success, unlock orders that we've just placed on the stack
         # it's good practice to do this to stop some of the orders we've just placed being altered
@@ -130,7 +123,7 @@ class orderStackData(object):
         if len(list_of_order_ids) == 0:
             return None
 
-        self.log.warn("Rolling back addition of orders %s" % str(list_of_order_ids))
+        self.log.warning("Rolling back addition of orders %s" % str(list_of_order_ids))
 
         for order_id in list_of_order_ids:
             self.unlock_order_on_stack(order_id)
@@ -229,7 +222,6 @@ class orderStackData(object):
         allow_zero_completions=False,
         treat_inactive_as_complete=False,
     ) -> bool:
-
         existing_order = self.get_order_with_id_from_stack(order_id)
 
         if allow_zero_completions:
@@ -260,10 +252,8 @@ class orderStackData(object):
         existing_order = self.get_order_with_id_from_stack(order_id)
         if existing_order is missing_order:
             error_msg = "Can't add children to non existent order %d" % order_id
-            self.log.warn(error_msg)
+            self.log.warning(error_msg)
             raise missingOrder(error_msg)
-
-        log = existing_order.log_with_attributes(self.log)
 
         already_have_children = not existing_order.no_children()
         if already_have_children:
@@ -271,7 +261,11 @@ class orderStackData(object):
                 "Can't add children to order that already has children %s"
                 % str(existing_order.children)
             )
-            log.warn(error_msg)
+            self.log.warning(
+                error_msg,
+                **existing_order.log_attributes(),
+                method="temp",
+            )
             raise Exception(error_msg)
 
         new_order = copy(existing_order)
@@ -283,7 +277,7 @@ class orderStackData(object):
         existing_order = self.get_order_with_id_from_stack(order_id)
         if existing_order is missing_order:
             error_msg = "Can't add children to non existent order %d" % order_id
-            self.log.warn(error_msg)
+            self.log.warning(error_msg)
             raise missingOrder(error_msg)
 
         existing_order.add_another_child(new_child)
@@ -294,7 +288,7 @@ class orderStackData(object):
         existing_order = self.get_order_with_id_from_stack(order_id)
         if existing_order is missing_order:
             error_msg = "Can't remove children from non existent order %d" % order_id
-            self.log.warn(error_msg)
+            self.log.warning(error_msg)
             raise missingOrder(error_msg)
 
         new_order = copy(existing_order)
@@ -303,7 +297,6 @@ class orderStackData(object):
         self._change_order_on_stack(order_id, new_order)
 
     def mark_as_manual_fill_for_order_id(self, order_id: int):
-
         order = self.get_order_with_id_from_stack(order_id)
         order.manual_fill = True
         self._change_order_on_stack(order_id, order)
@@ -316,18 +309,17 @@ class orderStackData(object):
         filled_price: float = None,
         fill_datetime: datetime.datetime = None,
     ):
-
         existing_order = self.get_order_with_id_from_stack(order_id)
         if existing_order is missing_order:
             error_msg = "Can't apply fill to non existent order %d" % order_id
-            self.log.warn(error_msg)
+            self.log.warning(error_msg)
             raise missingOrder(error_msg)
 
         if existing_order.fill == fill_qty:
             # nout to do here, fills are cumulative
             return None
 
-        log = existing_order.log_with_attributes(self.log)
+        log_attrs = {**existing_order.log_attributes(), "method": "temp"}
 
         new_order = copy(existing_order)
         try:
@@ -335,14 +327,15 @@ class orderStackData(object):
                 fill_qty, filled_price=filled_price, fill_datetime=fill_datetime
             )
         except overFilledOrder as e:
-            log.warn(str(e))
+            self.log.warning(str(e), **log_attrs)
             raise overFilledOrder(e)
 
         self._change_order_on_stack(order_id, new_order)
 
-        log.msg(
+        self.log.debug(
             "Changed fill qty from %s to %s for order %s"
-            % (str(existing_order.fill), str(fill_qty), str(existing_order))
+            % (str(existing_order.fill), str(fill_qty), str(existing_order)),
+            **log_attrs,
         )
 
     def zero_out(self, order_id: int):
@@ -351,14 +344,16 @@ class orderStackData(object):
         existing_order = self.get_order_with_id_from_stack(order_id)
         if existing_order is missing_order:
             error_msg = "Can't zero out non existent order" % order_id
-            self.log.warn(error_msg)
+            self.log.warning(error_msg)
             raise missingOrder(error_msg)
-
-        log = existing_order.log_with_attributes(existing_order)
 
         if not existing_order.active:
             # already inactive
-            log.warn("Can't zero out order which is already inactive")
+            self.log.warning(
+                "Can't zero out order which is already inactive",
+                **existing_order.log_attributes(),
+                method="temp",
+            )
             return None
 
         new_order = copy(existing_order)
@@ -373,10 +368,8 @@ class orderStackData(object):
         existing_order = self.get_order_with_id_from_stack(order_id)
         if existing_order is missing_order:
             error_msg = "Can't deactivate non existent order" % order_id
-            self.log.warn(error_msg)
+            self.log.warning(error_msg)
             raise missingOrder(error_msg)
-
-        log = existing_order.log_with_attributes(self.log)
 
         if not existing_order.active:
             # already inactive
@@ -429,23 +422,23 @@ class orderStackData(object):
         existing_order = self.get_order_with_id_from_stack(order_id)
         if existing_order is missing_order:
             error_msg = "Can't change non existent order %d" % order_id
-            self.log.warn(error_msg)
+            self.log.warning(error_msg)
             raise missingOrder(error_msg)
 
-        log = existing_order.log_with_attributes(self.log)
+        log_attrs = {**existing_order.log_attributes(), "method": "temp"}
 
         lock_status = existing_order.is_order_locked()
         if lock_status is True:
             # already locked can't change
             error_msg = "Can't change locked order %s" % str(existing_order)
-            log.warn(error_msg)
+            self.log.warning(error_msg, **log_attrs)
             raise Exception(error_msg)
 
         if check_if_inactive:
             existing_order_is_inactive = not existing_order.active
             if existing_order_is_inactive:
                 error_msg = "Can't change order %s as inactive" % str(existing_order)
-                log.warn(error_msg)
+                self.log.warning(error_msg, **log_attrs)
 
         self._change_order_on_stack_no_checking(order_id, new_order)
 
@@ -453,7 +446,7 @@ class orderStackData(object):
         order = self.get_order_with_id_from_stack(order_id)
         if order is missing_order:
             error_msg = "Can't unlock non existent order %d" % order_id
-            self.log.warn(error_msg)
+            self.log.warning(error_msg)
             raise missingOrder(error_msg)
 
         order.unlock_order()
@@ -463,7 +456,7 @@ class orderStackData(object):
         order = self.get_order_with_id_from_stack(order_id)
         if order is missing_order:
             error_msg = "Can't lock non existent order %d" % order_id
-            self.log.warn(error_msg)
+            self.log.warning(error_msg)
             raise missingOrder(error_msg)
 
         order.lock_order()
@@ -474,10 +467,11 @@ class orderStackData(object):
     def _put_order_on_stack_and_get_order_id(self, order: Order) -> int:
         order_has_existing_id = not order.order_id is no_order_id
         if order_has_existing_id:
-            log = order.log_with_attributes(self.log)
-            log.warn(
+            self.log.warning(
                 "Order %s already has order ID will be ignored and allocated a new ID!"
-                % str(order)
+                % str(order),
+                **order.log_attributes(),
+                method="temp",
             )
 
         order_to_add = copy(order)
@@ -511,7 +505,6 @@ class orderStackData(object):
     def _get_list_of_order_ids_with_key_from_stack(
         self, order_key: str, exclude_inactive_orders: bool = True
     ) -> list:
-
         all_order_ids = self.get_list_of_order_ids(
             exclude_inactive_orders=exclude_inactive_orders
         )
@@ -533,29 +526,29 @@ class orderStackData(object):
     # LOW LEVEL OPERATIONS to include in specific implementation
 
     def _get_list_of_all_order_ids(self) -> list:
-        # probably will be overriden in data implementation
+        # probably will be overridden in data implementation
         raise NotImplementedError
 
     # deleting
 
     def _remove_order_with_id_from_stack_no_checking(self, order_id: int):
-        # probably will be overriden in data implementation
+        # probably will be overridden in data implementation
 
         raise NotImplementedError
 
     def _change_order_on_stack_no_checking(self, order_id: int, order: Order):
         #
-        # probably will be overriden in data implementation
+        # probably will be overridden in data implementation
 
         raise NotImplementedError
 
     def get_order_with_id_from_stack(self, order_id: int) -> Order:
-        # probably will be overriden in data implementation
+        # probably will be overridden in data implementation
         # return missing_order if not found
         raise NotImplementedError
 
     def _put_order_on_stack_no_checking(self, order: Order):
-        # probably will be overriden in data implementation
+        # probably will be overridden in data implementation
 
         raise NotImplementedError
 

@@ -75,7 +75,6 @@ def get_roll_data_for_instrument(instrument_code, data):
 def relative_volume_in_forward_contract_versus_price(
     data: dataBlob, instrument_code: str
 ) -> float:
-
     volumes = relative_volume_in_forward_contract_and_price(data, instrument_code)
     required_volume = volumes[1]
     if np.isnan(required_volume):
@@ -87,7 +86,6 @@ def relative_volume_in_forward_contract_versus_price(
 def relative_volume_in_forward_contract_and_price(
     data: dataBlob, instrument_code: str
 ) -> list:
-
     c_data = dataContracts(data)
     forward_contract_id = c_data.get_forward_contract_id(instrument_code)
     current_contract = c_data.get_priced_contract_id(instrument_code)
@@ -101,7 +99,6 @@ def relative_volume_in_forward_contract_and_price(
 
 
 def volume_contracts_in_forward_contract(data: dataBlob, instrument_code: str) -> float:
-
     c_data = dataContracts(data)
     forward_contract_id = c_data.get_forward_contract_id(instrument_code)
     v_data = diagVolumes(data)
@@ -182,7 +179,6 @@ class rollingAdjustedAndMultiplePrices(object):
     def new_adjusted_prices(self):
         new_adjusted_prices = getattr(self, "_new_adjusted_prices", None)
         if new_adjusted_prices is None:
-
             new_adjusted_prices = (
                 self._new_adjusted_prices
             ) = futuresAdjustedPrices.stitch_multiple_prices(
@@ -340,7 +336,6 @@ def update_multiple_prices_on_roll(
 def get_final_matched_price_from_contract_object(
     data, contract_object, new_multiple_prices
 ):
-
     diag_prices = diagPrices(data)
     price_series = diag_prices.get_merged_prices_for_contract_object(
         contract_object
@@ -366,7 +361,7 @@ def get_or_infer_latest_price(new_multiple_prices, price_col: str = "PRICE"):
 
     If one can't be found, infer (There will always be a price in some column)
 
-    :param current_multiple_prices: futuresMultiplePrices
+    :param new_multiple_prices: futuresMultiplePrices
     :param price_col: one of 'PRICE','CARRY','FORWARD'
     :return: tuple: float, bool. Bool is true if the price is inferred, otherwise False
     """
@@ -461,7 +456,6 @@ def last_price_data_with_matched_contracts(df_of_col_and_col_to_use):
             current_contract_to_find == final_contract_of_to_find
             and current_contract_to_infer_from == final_contract_of_to_infer_from
         ):
-
             row_to_copy = df_of_col_and_col_to_use[
                 ["Price_to_find", "Price_infer_from"]
             ].iloc[data_row_idx]
@@ -521,7 +515,7 @@ def rollback_adjustment(
             instrument_code, current_multiple_prices, ignore_duplication=True
         )
     except Exception as e:
-        data.log.warn(
+        data.log.warning(
             "***** ROLLBACK FAILED! %s!You may need to rebuild your data! Check before trading!! *****"
             % e
         )

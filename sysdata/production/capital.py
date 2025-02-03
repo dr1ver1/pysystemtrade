@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 
 from syscore.exceptions import missingData
-from syscore.constants import arg_not_supplied, failure
+from syscore.constants import arg_not_supplied
 
 from sysdata.base_data import baseData
 from sysobjects.production.capital import (
@@ -32,20 +32,20 @@ class capitalData(baseData):
 
     def get_current_total_capital(self) -> float:
         pd_series = self.get_total_capital_pd_series()
-        return float(pd_series[-1])
+        return float(pd_series.iloc[-1])
 
     def get_current_broker_account_value(self) -> float:
         pd_series = self.get_broker_account_value_pd_series()
 
-        return float(pd_series[-1])
+        return float(pd_series.iloc[-1])
 
     def get_current_maximum_capital_value(self) -> float:
         pd_series = self.get_maximum_account_value_pd_series()
-        return float(pd_series[-1])
+        return float(pd_series.iloc[-1])
 
     def get_current_pandl_account(self) -> float:
         pd_series = self.get_profit_and_loss_account_pd_series()
-        return float(pd_series[-1])
+        return float(pd_series.iloc[-1])
 
     def get_total_capital_pd_series(self) -> pd.Series:
         all_capital_series = self.get_df_of_all_global_capital()
@@ -132,7 +132,6 @@ class capitalData(baseData):
         )
 
     def delete_all_global_capital(self, are_you_really_sure=False):
-
         self.delete_all_capital_for_strategy(
             GLOBAL_CAPITAL_DICT_KEY, are_you_really_sure=are_you_really_sure
         )
@@ -144,7 +143,6 @@ class capitalData(baseData):
         return capital_df
 
     def update_df_of_all_global_capital(self, updated_capital_series: pd.DataFrame):
-
         ## ignore warning - for global we pass a Frame not a Series
         self.update_capital_pd_df_for_strategy(
             GLOBAL_CAPITAL_DICT_KEY, updated_capital_series
@@ -190,7 +188,6 @@ class capitalData(baseData):
     def delete_all_capital_for_strategy(
         self, strategy_name: str, are_you_really_sure=False
     ):
-
         if are_you_really_sure:
             self._delete_all_capital_for_strategy_no_checking(strategy_name)
         else:
@@ -212,13 +209,11 @@ class capitalData(baseData):
         raise NotImplementedError
 
     def _delete_all_capital_for_strategy_no_checking(self, strategy_name: str):
-
         raise NotImplementedError
 
     def update_capital_pd_df_for_strategy(
         self, strategy_name: str, updated_capital_df: pd.DataFrame
     ):
-
         raise NotImplementedError
 
 
@@ -241,8 +236,10 @@ class totalCapitalCalculationData(object):
 
     def __init__(self, capital_data: capitalData, calc_method="full"):
         """
-        Calculation methods are: full- all profits and losses go to capital, half - profits past the HWM are not added,
-           fixed - capital is unaffected by profits and losses (not reccomended!)
+        Calculation methods are:
+          - full: all profits and losses go to capital
+          - half: profits past the HWM are not added
+          - fixed: capital is unaffected by profits and losses (not recommended!)
 
         :param capital_data: strategyCapitalData instance or something that inherits from it
         :param calc_method: method for going from profits to capital allocated
@@ -270,9 +267,6 @@ class totalCapitalCalculationData(object):
     def __repr__(self):
         return "capitalCalculationData for %s" % self._capital_data
 
-    def get_returns_as_account_curve(self) -> pd.DataFrame:
-        raise NotImplementedError()
-
     def get_percentage_returns_as_pd(self) -> pd.DataFrame:
         total_capital = self.get_total_capital()
         daily_returns = self.get_daily_returns()
@@ -293,6 +287,15 @@ class totalCapitalCalculationData(object):
 
         return daily_pandl
 
+    def check_for_total_capital_data(self) -> bool:
+        try:
+            all_global_capital = self.get_df_of_all_global_capital()
+            if len(all_global_capital) == 0:
+                raise Exception
+            return True
+        except:
+            return False
+
     def get_current_total_capital(self):
         return self.capital_data.get_current_total_capital()
 
@@ -308,7 +311,7 @@ class totalCapitalCalculationData(object):
     def get_current_accumulated_pandl(self) -> float:
         return self.capital_data.get_current_pandl_account()
 
-    def get_profit_and_loss_account(self) -> pd.Series():
+    def get_profit_and_loss_account(self) -> pd.Series:
         return self.capital_data.get_profit_and_loss_account_pd_series()
 
     def get_maximum_account(self) -> pd.Series:
@@ -320,7 +323,6 @@ class totalCapitalCalculationData(object):
     def update_and_return_total_capital_with_new_broker_account_value(
         self, broker_account_value: float, check_limit=0.1
     ) -> float:
-
         """
         does everything you'd expect when a new broker account value arrives:
            - add on to broker account value series
@@ -348,7 +350,6 @@ class totalCapitalCalculationData(object):
     def _init_capital_updater(
         self, new_broker_account_value: float
     ) -> totalCapitalUpdater:
-
         calc_method = self.calc_method
         try:
             prev_broker_account_value = self._get_prev_broker_account_value()
@@ -378,7 +379,6 @@ class totalCapitalCalculationData(object):
     def _update_capital_data_after_pandl_event(
         self, capital_updater: totalCapitalUpdater
     ):
-
         # Update broker account value and add p&l entry with synched dates
         date = datetime.datetime.now()
 
@@ -412,7 +412,7 @@ class totalCapitalCalculationData(object):
                 self.capital_data.get_current_broker_account_value()
             )
         except missingData:
-            self._capital_data.log.warn(
+            self._capital_data.log.warning(
                 "Can't apply a delta to broker account value, since no value in data"
             )
             raise
@@ -441,7 +441,7 @@ class totalCapitalCalculationData(object):
         :return: None
         """
         if not are_you_sure:
-            self.capital_data.log.warn("You need to be sure to modify capital!")
+            self.capital_data.log.warning("You need to be sure to modify capital!")
         if date is arg_not_supplied:
             date = datetime.datetime.now()
 
@@ -506,8 +506,8 @@ class totalCapitalCalculationData(object):
         :return:
         """
         if not are_you_sure:
-            self._capital_data.log.warn("You have to be sure to delete capital")
-            return failure
+            self._capital_data.log.warning("You have to be sure to delete capital")
+            raise Exception("You have to be sure!")
 
         self.capital_data.delete_recent_capital(last_date=last_date)
 

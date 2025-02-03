@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 
-from syscore.constants import missing_data
 from syscore.pandas.strategy_functions import turnover
 from systems.system_cache import diagnostic
 
@@ -13,7 +12,9 @@ class accountBufferingSubSystemLevel(accountCosts):
     def subsystem_turnover(self, instrument_code: str) -> float:
         positions = self.get_subsystem_position(instrument_code)
 
-        average_position_for_turnover = self.get_volatility_scalar(instrument_code)
+        average_position_for_turnover = self.get_average_position_at_subsystem_level(
+            instrument_code
+        )
 
         subsystem_turnover = turnover(positions, average_position_for_turnover)
 
@@ -47,8 +48,8 @@ class accountBufferingSubSystemLevel(accountCosts):
 
         optimal_position = self.get_subsystem_position(instrument_code)
 
-        buffer_method = self.config.get_element_or_missing_data("buffer_method")
-        if buffer_method is missing_data or buffer_method == "none":
+        buffer_method = self.config.get_element_or_default("buffer_method", "none")
+        if buffer_method == "none":
             if roundpositions:
                 return optimal_position.round()
             else:
@@ -72,8 +73,7 @@ class accountBufferingSubSystemLevel(accountCosts):
         pos_buffers: pd.DataFrame,
         roundpositions: bool = True,
     ) -> pd.Series:
-
-        self.log.msg("Calculating buffered subsystem positions")
+        self.log.debug("Calculating buffered subsystem positions")
         trade_to_edge = self.config.buffer_trade_to_edge
 
         buffered_position = apply_buffer(
@@ -117,17 +117,17 @@ def apply_buffer(
 
     If we're rounding positions, then we floor and ceiling the buffers.
 
-    :param position: optimal position
-    :type position: pd.Series
+    :param optimal_position: optimal position
+    :type optimal_position: pd.Series
 
     :param pos_buffers:
     :type pos_buffers: Tx2 pd.dataframe, top_pos and bot_pos
 
-    :param trade_to_edge: Trade to the edge (TRue) or the optimal (False)
+    :param trade_to_edge: Trade to the edge (True) or the optimal (False)
     :type trade_to_edge: bool
 
-    :param round_positions: Produce rounded positions
-    :type round_positions: bool
+    :param roundpositions: Produce rounded positions
+    :type roundpositions: bool
 
     :returns: pd.Series
     """
@@ -185,7 +185,7 @@ def apply_buffer_single_period(
     :param bot_pos: bottom of buffer
     :type bot_pos: float
 
-    :param trade_to_edge: Trade to the edge (TRue) or the optimal (False)
+    :param trade_to_edge: Trade to the edge (True) or the optimal (False)
     :type trade_to_edge: bool
 
     :returns: float

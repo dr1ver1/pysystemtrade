@@ -2,7 +2,7 @@ from scipy.stats import ttest_1samp
 
 import numpy as np
 from syscore.dateutils import Frequency
-from syscore.constants import missing_data, arg_not_supplied
+from syscore.constants import arg_not_supplied
 from systems.accounts.curves.account_curve import accountCurve
 from systems.accounts.pandl_calculators.pandl_generic_costs import (
     GROSS_CURVE,
@@ -37,7 +37,6 @@ class statsDict(dict):
         curve_type="net",
         percent=True,
     ):
-
         dict_of_results_by_stat = self.dict_of_results_by_asset_name(
             item=item,
             account_curve_group=account_curve_group,
@@ -59,7 +58,6 @@ class statsDict(dict):
         curve_type_str="net",
         is_percentage=True,
     ):
-
         weight = 1.0 / len(self.keys())
         unweighted_results = self.dict_of_results_by_asset_name(
             item=item,
@@ -86,7 +84,6 @@ class statsDict(dict):
         curve_type_str="net",
         is_percentage=True,
     ):
-
         time_weights_dict = self._time_weights()
         unweighted_results = self.dict_of_results_by_asset_name(
             item=item,
@@ -116,7 +113,6 @@ class statsDict(dict):
         curve_type_str="net",
         is_percentage=True,
     ):
-
         if account_curve_group is arg_not_supplied:
             account_curve_group = self.account_curve_group
 
@@ -148,7 +144,6 @@ class statsDict(dict):
         curve_type_str="net",
         is_percentage=True,
     ):
-
         if item is arg_not_supplied:
             item = self.item
 
@@ -160,7 +155,8 @@ class statsDict(dict):
             is_percentage=is_percentage,
         )
 
-        method_to_call = getattr(account_curve, item, missing_data)
+        method_to_call = getattr(account_curve, item)
+
         return method_to_call()
 
     def account_curve_for_asset(
@@ -171,7 +167,6 @@ class statsDict(dict):
         curve_type_str="net",
         is_percentage=True,
     ) -> accountCurve:
-
         if account_curve_group is arg_not_supplied:
             account_curve_group = self.account_curve_group
 

@@ -5,6 +5,7 @@ import pandas as pd
 from systems.stage import SystemStage
 from syscore.objects import resolve_function
 from syscore.dateutils import ROOT_BDAYS_INYEAR
+from syscore.genutils import list_intersection
 from syscore.exceptions import missingData
 from systems.system_cache import input, diagnostic, output
 
@@ -41,6 +42,17 @@ class RawData(SystemStage):
     def config(self) -> Config:
         return self.parent.config
 
+    def get_raw_cost_data(self, instrument_code: str):
+        return self.data_stage.get_raw_cost_data(instrument_code)
+
+    def get_value_of_block_price_move(self, instrument_code: str) -> float:
+        return self.data_stage.get_value_of_block_price_move(instrument_code)
+
+    def get_fx_for_instrument(self, instrument_code: str, base_currency: str):
+        return self.data_stage.get_fx_for_instrument(
+            instrument_code=instrument_code, base_currency=base_currency
+        )
+
     @input
     def get_daily_prices(self, instrument_code) -> pd.Series:
         """
@@ -53,7 +65,7 @@ class RawData(SystemStage):
 
         KEY OUTPUT
         """
-        self.log.msg(
+        self.log.debug(
             "Calculating daily prices for %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -69,7 +81,7 @@ class RawData(SystemStage):
 
     @input
     def get_natural_frequency_prices(self, instrument_code: str) -> pd.Series:
-        self.log.msg(
+        self.log.debug(
             "Retrieving natural prices for %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -114,6 +126,23 @@ class RawData(SystemStage):
         dailyreturns = instrdailyprice.diff()
 
         return dailyreturns
+
+    @output()
+    def hourly_returns(self, instrument_code: str) -> pd.Series:
+        """
+        Gets hourly returns (not % returns)
+
+        :param instrument_code: Instrument to get prices for
+        :type trading_rules: str
+
+        :returns: Tx1 pd.DataFrame
+
+
+        """
+        hourly_prices = self.get_hourly_prices(instrument_code)
+        hourly_returns = hourly_prices.diff()
+
+        return hourly_returns
 
     @output()
     def annualised_returns_volatility(self, instrument_code: str) -> pd.Series:
@@ -166,20 +195,26 @@ class RawData(SystemStage):
         2015-12-11  0.058626
 
         """
-        self.log.msg(
+        self.log.debug(
             "Calculating daily volatility for %s" % instrument_code,
             instrument_code=instrument_code,
         )
 
-        dailyreturns = self.daily_returns(instrument_code)
         volconfig = copy(self.config.volatility_calculation)
+
+        which_returns = volconfig.pop("name_returns_attr_in_rawdata")
+        returns_func = getattr(self, which_returns)
+        price_returns = returns_func(instrument_code)
 
         # volconfig contains 'func' and some other arguments
         # we turn func which could be a string into a function, and then
-        # call it with the other ags
+        # call it with the other args
+        vol_multiplier = volconfig.pop("multiplier_to_get_daily_vol")
 
         volfunction = resolve_function(volconfig.pop("func"))
-        vol = volfunction(dailyreturns, **volconfig)
+        raw_vol = volfunction(price_returns, **volconfig)
+
+        vol = vol_multiplier * raw_vol
 
         return vol
 
@@ -257,7 +292,7 @@ class RawData(SystemStage):
         2015-12-10    -1.219510
         2015-12-11     1.985413
         """
-        self.log.msg(
+        self.log.debug(
             "Calculating normalised return for %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -280,7 +315,7 @@ class RawData(SystemStage):
         :return: pd.Series
         """
 
-        self.log.msg(
+        self.log.debug(
             "Calculating cumulative normalised return for %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -321,7 +356,6 @@ class RawData(SystemStage):
     def _daily_vol_normalised_price_for_list_of_instruments(
         self, list_of_instruments: list
     ) -> pd.Series:
-
         norm_returns = (
             self._aggregate_daily_vol_normalised_returns_for_list_of_instruments(
                 list_of_instruments
@@ -342,15 +376,42 @@ class RawData(SystemStage):
         :return: pd.Series
         """
 
-        instruments_in_asset_class = self.data_stage.all_instruments_in_asset_class(
-            asset_class
-        )
+        instruments_in_asset_class = self.all_instruments_in_asset_class(asset_class)
 
         norm_price = self._daily_vol_normalised_price_for_list_of_instruments(
             instruments_in_asset_class
         )
 
         return norm_price
+
+    @diagnostic()
+    def daily_vol_normalised_price_for_asset_class_with_redundant_instrument_code(
+        self, instrument_code: str, asset_class: str
+    ) -> pd.Series:
+        """
+        Price for an asset class, built up from cumulative returns
+
+        :param asset_class: str
+        :return: pd.Series
+        """
+
+        return self._by_asset_class_daily_vol_normalised_price_for_asset_class(
+            asset_class
+        )
+
+    @diagnostic()
+    def system_with_redundant_instrument_code_passed(
+        self, instrument_code: str, asset_class: str
+    ):
+        ## allows ultimate flexibility when creating trading rules but be careful!
+
+        return self.parent
+
+    @diagnostic()
+    def instrument_code(self, instrument_code: str) -> pd.Series:
+        ## allows ultimate flexibility when creating trading rules
+
+        return instrument_code
 
     @output()
     def normalised_price_for_asset_class(self, instrument_code: str) -> pd.Series:
@@ -382,10 +443,11 @@ class RawData(SystemStage):
     def rolls_per_year(self, instrument_code: str) -> int:
         ## an input but we cache to avoid spamming with errors
         try:
-            rolls_per_year = self.parent.data.get_rolls_per_year(instrument_code)
+            rolls_per_year = self.data_stage.get_rolls_per_year(instrument_code)
         except:
-            self.log.warn(
+            self.log.warning(
                 "No roll data for %s, this is fine for spot instruments but not for futures"
+                % instrument_code
             )
             rolls_per_year = 0
 
@@ -414,7 +476,7 @@ class RawData(SystemStage):
         2015-12-11 19:33:39  97.9875    NaN         201812         201903
         """
 
-        instrcarrydata = self.parent.data.get_instrument_raw_carry_data(instrument_code)
+        instrcarrydata = self.data_stage.get_instrument_raw_carry_data(instrument_code)
         if len(instrcarrydata) == 0:
             raise missingData(
                 "Data for %s not found! Remove from instrument list, or add to config.ignore_instruments"
@@ -582,9 +644,7 @@ class RawData(SystemStage):
         :return:
         """
 
-        instruments_in_asset_class = self.parent.data.all_instruments_in_asset_class(
-            asset_class
-        )
+        instruments_in_asset_class = self.all_instruments_in_asset_class(asset_class)
 
         raw_carry_across_asset_class = [
             self.raw_carry(instrument_code)
@@ -615,7 +675,7 @@ class RawData(SystemStage):
         :return: pd.Series
         """
 
-        asset_class = self.parent.data.asset_class_for_instrument(instrument_code)
+        asset_class = self.data_stage.asset_class_for_instrument(instrument_code)
         median_carry = self._by_asset_class_median_carry_for_asset_class(asset_class)
         instrument_carry = self.raw_carry(instrument_code)
 
@@ -653,7 +713,7 @@ class RawData(SystemStage):
         try:
             prices = self.get_instrument_raw_carry_data(instrument_code).PRICE
         except missingData:
-            self.log.warn(
+            self.log.warning(
                 "No carry data found for %s, using adjusted prices to calculate percentage returns"
                 % instrument_code
             )
@@ -662,6 +722,21 @@ class RawData(SystemStage):
         daily_prices = prices.resample("1B").last()
 
         return daily_prices
+
+    def all_instruments_in_asset_class(self, asset_class: str) -> list:
+        instruments_in_asset_class = self.data_stage.all_instruments_in_asset_class(
+            asset_class
+        )
+        instrument_list = self.instrument_list()
+        instruments_in_asset_class_and_master_list = list_intersection(
+            instruments_in_asset_class, instrument_list
+        )
+
+        return instruments_in_asset_class_and_master_list
+
+    def instrument_list(self) -> list:
+        instrument_list = self.parent.get_instrument_list()
+        return instrument_list
 
 
 if __name__ == "__main__":

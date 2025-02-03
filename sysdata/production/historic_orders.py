@@ -19,7 +19,7 @@ from syscore.constants import arg_not_supplied
 from sysexecution.orders.named_order_objects import missing_order
 
 from sysdata.base_data import baseData
-from sysobjects.fills import listOfFills, fill_from_order
+from sysobjects.fills import ListOfFills, fill_from_order
 from sysexecution.orders.base_orders import Order
 from sysexecution.orders.broker_orders import single_fill_from_broker_order
 from sysexecution.order_stacks.order_stack import missingOrder
@@ -27,11 +27,11 @@ from sysexecution.orders.list_of_orders import listOfOrders
 
 from sysobjects.production.tradeable_object import instrumentStrategy, futuresContract
 
-from syslogdiag.log_to_screen import logtoscreen
+from syslogging.logger import *
 
 
 class genericOrdersData(baseData):
-    def __init__(self, log=logtoscreen("")):
+    def __init__(self, log=get_logger("")):
         super().__init__(log=log)
 
     def __repr__(self):
@@ -64,14 +64,13 @@ class genericOrdersData(baseData):
         period_start: datetime.datetime,
         period_end: datetime.datetime = arg_not_supplied,
     ) -> list:
-
         raise NotImplementedError
 
 
 class strategyHistoricOrdersData(genericOrdersData):
     def get_fills_history_for_instrument_strategy(
         self, instrument_strategy: instrumentStrategy
-    ) -> listOfFills:
+    ) -> ListOfFills:
         """
 
         :param instrument_code:  str
@@ -82,7 +81,7 @@ class strategyHistoricOrdersData(genericOrdersData):
             instrument_strategy
         )
         order_list_as_fills = [fill_from_order(order) for order in order_list]
-        list_of_fills = listOfFills(order_list_as_fills)
+        list_of_fills = ListOfFills(order_list_as_fills)
 
         return list_of_fills
 
@@ -104,7 +103,6 @@ class strategyHistoricOrdersData(genericOrdersData):
     def get_list_of_order_ids_for_instrument_strategy(
         self, instrument_strategy: instrumentStrategy
     ):
-
         raise NotImplementedError
 
 
@@ -115,7 +113,7 @@ class contractHistoricOrdersData(genericOrdersData):
 class brokerHistoricOrdersData(contractHistoricOrdersData):
     def get_fills_history_for_contract(
         self, futures_contract: futuresContract
-    ) -> listOfFills:
+    ) -> ListOfFills:
         """
 
         :param instrument_code:  str
@@ -133,7 +131,7 @@ class brokerHistoricOrdersData(contractHistoricOrdersData):
             for orderid in list_of_order_ids
         ]
         list_of_fills = [fill for fill in list_of_fills if fill is not missing_order]
-        list_of_fills = listOfFills(list_of_fills)
+        list_of_fills = ListOfFills(list_of_fills)
 
         return list_of_fills
 

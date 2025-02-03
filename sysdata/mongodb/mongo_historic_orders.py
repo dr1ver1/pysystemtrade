@@ -10,7 +10,7 @@ from sysexecution.orders.instrument_orders import instrumentOrder
 from sysexecution.orders.contract_orders import contractOrder
 from sysexecution.orders.broker_orders import brokerOrder
 
-from syslogdiag.log_to_screen import logtoscreen
+from syslogging.logger import *
 from sysdata.production.historic_orders import (
     genericOrdersData,
     strategyHistoricOrdersData,
@@ -42,9 +42,7 @@ class mongoGenericHistoricOrdersData(genericOrdersData):
     def _name(self):
         return "Historic orders"
 
-    def __init__(
-        self, mongo_db=None, log=logtoscreen("mongoGenericHistoricOrdersData")
-    ):
+    def __init__(self, mongo_db=None, log=get_logger("mongoGenericHistoricOrdersData")):
         # Not needed as we don't store anything in _state attribute used in parent class
         # If we did have _state would risk breaking if we forgot to override methods
         # super().__init__()
@@ -63,7 +61,7 @@ class mongoGenericHistoricOrdersData(genericOrdersData):
         return "%s (%s)" % (self._name, str(self.mongo_data))
 
     def add_order_to_data(self, order: Order, ignore_duplication: bool = False):
-        # Duplicates will be overriden, so be careful
+        # Duplicates will be overridden, so be careful
         order_id = order.order_id
         no_existing_order = self.get_order_with_orderid(order_id) is missing_order
         if no_existing_order:
@@ -78,7 +76,7 @@ class mongoGenericHistoricOrdersData(genericOrdersData):
                 )
 
     def _add_order_to_data_no_checking(self, order: Order):
-        # Duplicates will be overriden, so be careful
+        # Duplicates will be overridden, so be careful
         mongo_record = order.as_dict()
 
         self.mongo_data.add_data(order.order_id, mongo_record, allow_overwrite=True)
@@ -111,7 +109,6 @@ class mongoGenericHistoricOrdersData(genericOrdersData):
         period_start: datetime.datetime,
         period_end: datetime.datetime = arg_not_supplied,
     ) -> list:
-
         if period_end is arg_not_supplied:
             period_end = datetime.datetime.now()
 
@@ -140,7 +137,6 @@ class mongoStrategyHistoricOrdersData(
     def get_list_of_order_ids_for_instrument_strategy(
         self, instrument_strategy: instrumentStrategy
     ) -> list:
-
         old_list_of_order_id = (
             self._get_list_of_order_ids_for_instrument_strategy_specify_key(
                 instrument_strategy, "old_key"
@@ -157,7 +153,6 @@ class mongoStrategyHistoricOrdersData(
     def _get_list_of_order_ids_for_instrument_strategy_specify_key(
         self, instrument_strategy: instrumentStrategy, keyfield: str
     ) -> list:
-
         object_key = getattr(instrument_strategy, keyfield)
         custom_dict = dict(key=object_key)
         list_of_result_dicts = self.mongo_data.get_list_of_result_dict_for_custom_dict(

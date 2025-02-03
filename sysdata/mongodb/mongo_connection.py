@@ -31,14 +31,12 @@ def mongo_defaults(**kwargs):
     production_config = get_production_config()
     output_dict = {}
     for param_name in LIST_OF_MONGO_PARAMS:
-
         if param_name in passed_param_names:
             param_value = kwargs[param_name]
         else:
             param_value = arg_not_supplied
 
         if param_value is arg_not_supplied:
-
             param_value = getattr(production_config, param_name)
 
         output_dict[param_name] = param_value
@@ -89,7 +87,6 @@ class mongoDb:
         mongo_host: str = arg_not_supplied,
         mongo_port: int = arg_not_supplied,
     ):
-
         database_name, host, port = mongo_defaults(
             mongo_database_name=mongo_database_name,
             mongo_host=mongo_host,
@@ -121,7 +118,6 @@ class mongoConnection(object):
     """
 
     def __init__(self, collection_name: str, mongo_db: mongoDb = arg_not_supplied):
-
         # FIXME REMOVE NONE WHEN CODE PROPERLY REFACTORED
         if mongo_db is arg_not_supplied or mongo_db is None:
             mongo_db = mongoDb()
@@ -152,7 +148,6 @@ class mongoConnection(object):
         )
 
     def get_indexes(self):
-
         raw_index_information = copy(self.collection.index_information())
 
         if len(raw_index_information) == 0:
@@ -161,40 +156,49 @@ class mongoConnection(object):
         # '__id__' is always in index if there is data
         raw_index_information.pop(MONGO_INDEX_ID)
 
-        # mongo have buried this deep...
-        index_keys = [
-            index_entry["key"][0][0] for index_entry in raw_index_information.values()
-        ]
+        index_count = len(raw_index_information)
+        index_names = []
+        index_keys = []
 
-        return index_keys
+        for k, v in raw_index_information.items():
+            index_names.append(k)
+            for key in v["key"]:
+                index_keys.append(key[0])
 
-    def check_for_index(self, indexname):
-        if indexname in self.get_indexes():
-            return True
-        else:
-            return False
+        return index_count, index_names, index_keys
 
     def create_index(self, indexname, order=ASCENDING):
-        if self.check_for_index(indexname):
+        index_count, index_names, index_keys = self.get_indexes()
+        if indexname in index_keys:
+            # we don't try to create a single key index if the key field is already used
+            # in another index
             pass
         else:
             self.collection.create_index([(indexname, order)], unique=True)
 
-    ## FIXME ISSUE https://github.com/robcarver17/pysystemtrade/discussions/948
-    ## NOT CLEAR WHAT A LOT OF THIS CODE DOES
+    def create_compound_index(self, index_config: dict):
+        name_parts = []
+        key_tuples = []
+        keys = index_config.pop("keys")
+        for key, value in keys.items():
+            name_parts.append(str(key))
+            name_parts.append(str(value))
+            key_tuples.append((key, value))
+        new_index_name = "_".join(name_parts)
 
-    def create_multikey_index(
-        self, indexname1, indexname2, order1=ASCENDING, order2=ASCENDING
-    ):
-
-        joint_indexname = indexname1 + "_" + indexname2
-        if self.check_for_index(joint_indexname):
+        index_count, index_names, index_keys = self.get_indexes()
+        if index_count > 1 or len(index_keys) > 1 or new_index_name in index_names:
+            # We don't try to create a compound index if:
+            # - EITHER there is more than one index defined (likely created outside
+            #     of PST)
+            # - OR there is already some other compound index (likely created outside
+            #     of PST)
+            # - OR the name of an existing index matches what we would be about to
+            #     create (we probably already made it)
             pass
         else:
             self.collection.create_index(
-                [(indexname1, order1), (indexname2, order2)],
-                unique=True,
-                name=joint_indexname,
+                key_tuples, name=new_index_name, **index_config
             )
 
 

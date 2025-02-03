@@ -2,7 +2,7 @@ import pandas as pd
 
 
 from syscore.dateutils import ROOT_BDAYS_INYEAR
-from syscore.constants import missing_data
+from syscore.exceptions import missingData
 
 from sysdata.config.configdata import Config
 from sysdata.sim.sim_data import simData
@@ -68,10 +68,9 @@ class PositionSizing(SystemStage):
 
     @diagnostic()
     def get_subsystem_buffers(self, instrument_code: str) -> pd.Series:
-
         position = self.get_subsystem_position(instrument_code)
 
-        vol_scalar = self.get_volatility_scalar(instrument_code)
+        vol_scalar = self.get_average_position_at_subsystem_level(instrument_code)
         log = self.log
         config = self.config
 
@@ -114,7 +113,7 @@ class PositionSizing(SystemStage):
         2015-12-11     2.544598
 
         """
-        self.log.msg(
+        self.log.debug(
             "Calculating subsystem position for %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -123,7 +122,7 @@ class PositionSizing(SystemStage):
         """
 
         avg_abs_forecast = self.avg_abs_forecast()
-        vol_scalar = self.get_volatility_scalar(instrument_code)
+        vol_scalar = self.get_average_position_at_subsystem_level(instrument_code)
         forecast = self.get_combined_forecast(instrument_code)
 
         vol_scalar = vol_scalar.reindex(forecast.index, method="ffill")
@@ -153,10 +152,7 @@ class PositionSizing(SystemStage):
     @diagnostic()
     def _get_list_of_long_only_instruments(self) -> list:
         config = self.config
-        long_only = config.get_element_or_missing_data("long_only_instruments")
-        if long_only is missing_data:
-            return []
-
+        long_only = config.get_element_or_default("long_only_instruments", [])
         return long_only
 
     def avg_abs_forecast(self) -> float:
@@ -167,7 +163,9 @@ class PositionSizing(SystemStage):
         return self.parent.config
 
     @diagnostic()
-    def get_volatility_scalar(self, instrument_code: str) -> pd.Series:
+    def get_average_position_at_subsystem_level(
+        self, instrument_code: str
+    ) -> pd.Series:
         """
         Get ratio of required volatility vs volatility of instrument in instrument's own currency
 
@@ -181,20 +179,20 @@ class PositionSizing(SystemStage):
         >>> (comb, fcs, rules, rawdata, data, config)=get_test_object_futures_with_comb_forecasts()
         >>> system=System([rawdata, rules, fcs, comb, PositionSizing()], data, config)
         >>>
-        >>> system.positionSize.get_volatility_scalar("EDOLLAR").tail(2)
+        >>> system.positionSize.get_average_position_at_subsystem_level("EDOLLAR").tail(2)
                     vol_scalar
         2015-12-10   11.187869
         2015-12-11   10.332930
         >>>
         >>> ## without raw data
         >>> system2=System([ rules, fcs, comb, PositionSizing()], data, config)
-        >>> system2.positionSize.get_volatility_scalar("EDOLLAR").tail(2)
+        >>> system2.positionSize.get_average_position_at_subsystem_level("EDOLLAR").tail(2)
                     vol_scalar
         2015-12-10   11.180444
         2015-12-11   10.344278
         """
 
-        self.log.msg(
+        self.log.debug(
             "Calculating volatility scalar for %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -234,7 +232,7 @@ class PositionSizing(SystemStage):
 
         """
 
-        self.log.msg(
+        self.log.debug(
             "Calculating instrument value vol for %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -276,7 +274,7 @@ class PositionSizing(SystemStage):
 
         """
 
-        self.log.msg(
+        self.log.debug(
             "Calculating instrument currency vol for %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -320,7 +318,7 @@ class PositionSizing(SystemStage):
         """
 
         underlying_price = self.get_underlying_price(instrument_code)
-        value_of_price_move = self.parent.data.get_value_of_block_price_move(
+        value_of_price_move = self.rawdata_stage.get_value_of_block_price_move(
             instrument_code
         )
 
@@ -367,19 +365,21 @@ class PositionSizing(SystemStage):
 
 
         """
-        rawdata = self.rawdata_stage
-        if rawdata is missing_data:
+        try:
+            rawdata = self.rawdata_stage
+        except missingData:
             underlying_price = self.data.daily_prices(instrument_code)
         else:
-            underlying_price = self.rawdata_stage.daily_denominator_price(
-                instrument_code
-            )
+            underlying_price = rawdata.daily_denominator_price(instrument_code)
 
         return underlying_price
 
     @property
     def rawdata_stage(self) -> RawData:
-        rawdata_stage = getattr(self.parent, "rawdata", missing_data)
+        try:
+            rawdata_stage = getattr(self.parent, "rawdata")
+        except AttributeError as e:
+            raise missingData from e
 
         return rawdata_stage
 
@@ -457,7 +457,7 @@ class PositionSizing(SystemStage):
 
         """
 
-        self.log.msg("Getting vol target")
+        self.log.debug("Getting vol target")
 
         percentage_vol_target = self.get_percentage_vol_target()
 
@@ -535,7 +535,9 @@ class PositionSizing(SystemStage):
         """
 
         base_currency = self.get_base_currency()
-        fx_rate = self.data.get_fx_for_instrument(instrument_code, base_currency)
+        fx_rate = self.rawdata_stage.get_fx_for_instrument(
+            instrument_code, base_currency
+        )
 
         return fx_rate
 

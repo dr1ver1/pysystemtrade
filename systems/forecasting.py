@@ -89,7 +89,7 @@ class Rules(SystemStage):
 
         system = self.parent
 
-        self.log.msg(
+        self.log.debug(
             "Calculating raw forecast %s for %s"
             % (instrument_code, rule_variation_name),
             instrument_code=instrument_code,
@@ -127,7 +127,6 @@ class Rules(SystemStage):
         return trading_rules
 
     def _get_trading_rules_from_passed_rules(self):
-
         # What where we passed when object was created?
         passed_rules = self.passed_trading_rules
 

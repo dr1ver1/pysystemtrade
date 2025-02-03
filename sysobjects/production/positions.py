@@ -48,7 +48,6 @@ class instrumentPosition(Position):
 
 class instrumentStrategyPosition(Position):
     def __init__(self, position: int, instrument_strategy: instrumentStrategy):
-
         super().__init__(position, instrument_strategy)
 
     @property
@@ -186,16 +185,37 @@ class listOfPositions(list):
     def _as_set_of_dicts(self) -> dict:
         # start with
         output_dict = self._id_column_dict()
-        positions_column = [position.position for position in self]
-
-        output_dict[KEY_POSITION] = positions_column
+        output_dict[KEY_POSITION] = self._list_of_positions()
 
         return output_dict
 
     def _id_column_dict(self) -> dict:
-        id_column_list = [str(position.tradeable_object) for position in self]
+        id_column_list = self._list_of_ids()
         id_column_dict = {KEY_TRADEABLE_OBJECT: id_column_list}
         return id_column_dict
+
+    def tradeable_object_with_largest_abs_position(self):
+        idx_of_largest_position = self._idx_of_largest_position()
+        list_of_tradeable_objects = self._list_of_tradeable_objects()
+        return list_of_tradeable_objects[idx_of_largest_position]
+
+    def _idx_of_largest_position(self) -> int:
+        list_of_positions = self._list_of_positions()
+        abs_list_of_positions = [abs(position) for position in list_of_positions]
+        return abs_list_of_positions.index(max(abs_list_of_positions))
+
+    def _list_of_positions(self) -> list:
+        return [position.position for position in self]
+
+    def _list_of_ids(self) -> list:
+        list_of_tradeable_objects = self._list_of_tradeable_objects()
+        id_column_list = [
+            str(tradeable_object) for tradeable_object in list_of_tradeable_objects
+        ]
+        return id_column_list
+
+    def _list_of_tradeable_objects(self) -> list:
+        return [position.tradeable_object for position in self]
 
 
 KEY_INSTRUMENT_CODE = "instrument_code"
@@ -258,6 +278,25 @@ class listOfInstrumentStrategyPositions(listOfPositionsWithInstruments):
 
         return list_of_positions
 
+    def strategy_name_with_largest_abs_position_for_instrument(
+        self, instrument_code: str
+    ) -> str:
+        positions_for_instrument = self.subset_for_instrument(instrument_code)
+        tradeable_object = (
+            positions_for_instrument.tradeable_object_with_largest_abs_position()
+        )
+
+        return tradeable_object.strategy_name
+
+    def subset_for_instrument(
+        self, instrument_code: str
+    ) -> "listOfInstrumentStrategyPositions":
+        subset_list = [
+            position for position in self if position.instrument_code == instrument_code
+        ]
+
+        return listOfInstrumentStrategyPositions(subset_list)
+
     def _id_column_dict(self) -> dict:
         instrument_code_list = [str(position.instrument_code) for position in self]
         strategy_name_list = [str(position.strategy_name) for position in self]
@@ -271,7 +310,6 @@ class listOfInstrumentStrategyPositions(listOfPositionsWithInstruments):
     def position_object_for_instrument_strategy(
         self, instrument_strategy: instrumentStrategy
     ):
-
         result = list(
             filter(
                 lambda position: position.instrument_strategy == instrument_strategy,

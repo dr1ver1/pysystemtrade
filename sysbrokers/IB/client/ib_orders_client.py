@@ -1,3 +1,4 @@
+from ib_insync import TagValue
 from ib_insync.order import (
     MarketOrder as ibMarketOrder,
     LimitOrder as ibLimitOrder,
@@ -22,6 +23,10 @@ from sysexecution.orders.broker_orders import (
     brokerOrderType,
     market_order_type,
     limit_order_type,
+    snap_mkt_type,
+    snap_mid_type,
+    snap_prim_type,
+    adaptive_mkt_type,
 )
 
 from sysobjects.contracts import futuresContract
@@ -86,6 +91,7 @@ class ibOrdersClient(ibContractsClient):
         account_id: str = arg_not_supplied,
         order_type: brokerOrderType = market_order_type,
         limit_price: float = None,
+        what_if: bool = False,
     ) -> tradeWithContract:
         """
 
@@ -116,7 +122,10 @@ class ibOrdersClient(ibContractsClient):
             limit_price=limit_price,
         )
 
-        order_object = self.ib.placeOrder(ibcontract, ib_order)
+        if what_if:
+            order_object = self.ib.whatIfOrder(ibcontract, ib_order)
+        else:
+            order_object = self.ib.placeOrder(ibcontract, ib_order)
 
         trade_with_contract = tradeWithContract(ibcontract_with_legs, order_object)
 
@@ -129,10 +138,9 @@ class ibOrdersClient(ibContractsClient):
         order_type: brokerOrderType = market_order_type,
         limit_price: float = None,
     ) -> ibOrder:
-
         ib_BS_str, ib_qty = resolveBS_for_list(trade_list)
 
-        if order_type is market_order_type:
+        if order_type == market_order_type:
             ib_order = ibMarketOrder(ib_BS_str, ib_qty)
         elif order_type is limit_order_type:
             if limit_price is None:
@@ -140,6 +148,40 @@ class ibOrdersClient(ibContractsClient):
                 return missing_order
             else:
                 ib_order = ibLimitOrder(ib_BS_str, ib_qty, limit_price)
+        elif order_type is snap_mkt_type:
+            ## auxPrice is the offset so this will submit an order buy at the best offer, etc
+            ## Works like a market order but works for instruments with no streaming data
+            ib_order = ibOrder(
+                orderType="SNAP MKT",
+                action=ib_BS_str,
+                totalQuantity=ib_qty,
+                auxPrice=0.0,
+            )
+        elif order_type is snap_mid_type:
+            ## auxPrice is the offset so this will submit an order buy at the best offer, etc
+            ## Works like a market order but works for instruments with no streaming data
+            ib_order = ibOrder(
+                orderType="SNAP MID",
+                action=ib_BS_str,
+                totalQuantity=ib_qty,
+                auxPrice=0.0,
+            )
+        elif order_type is snap_prim_type:
+            ## auxPrice is the offset so this will submit an order buy at the best offer, etc
+            ## Works like a market order but works for instruments with no streaming data
+            ib_order = ibOrder(
+                orderType="SNAP PRIM",
+                action=ib_BS_str,
+                totalQuantity=ib_qty,
+                auxPrice=0.0,
+            )
+        elif order_type is adaptive_mkt_type:
+            # Uses a black-box algo w/ stated aim of balancing execution speed & price
+            # See https://investors.interactivebrokers.com/en/index.php?f=19091
+            ib_order = ibMarketOrder(ib_BS_str, ib_qty)
+            ib_order.algoStrategy = "Adaptive"
+            # Patient is usually pretty fast. Alternatives are Normal and Urgent
+            ib_order.algoParams = [TagValue("adaptivePriority", "Patient")]
         else:
             self.log.critical("Order type %s not recognised!" % order_type)
             return missing_order
@@ -160,7 +202,6 @@ class ibOrdersClient(ibContractsClient):
         original_contract_object_with_legs: ibcontractWithLegs,
         new_limit_price: float,
     ) -> tradeWithContract:
-
         original_contract_object = original_contract_object_with_legs.ibcontract
         original_order_object.lmtPrice = new_limit_price
 

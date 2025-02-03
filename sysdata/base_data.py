@@ -1,4 +1,4 @@
-from syslogdiag.log_to_screen import logtoscreen
+from syslogging.logger import *
 
 
 class baseData(object):
@@ -22,7 +22,7 @@ class baseData(object):
 
     """
 
-    def __init__(self, log=logtoscreen("baseData")):
+    def __init__(self, log=get_logger("baseData")):
         """
         simData socket base class
 
@@ -51,7 +51,7 @@ class baseData(object):
         """
 
         raise Exception(
-            "__getitem__ not defined for baseData class: use a class where it has been overriden"
+            "__getitem__ not defined for baseData class: use a class where it has been overridden"
         )
 
     def keys(self):
@@ -66,7 +66,7 @@ class baseData(object):
         """
 
         raise Exception(
-            "keys() not defined for baseData class: use a class where it has been overriden"
+            "keys() not defined for baseData class: use a class where it has been overridden"
         )
 
 

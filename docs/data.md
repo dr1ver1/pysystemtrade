@@ -178,77 +178,11 @@ Once we have the data we can also store it, in principle, anywhere but I will be
 
 By the way I can't just pull down this data myself and put it on github to save you time. Storing large amounts of data in github isn't a good idea regardless of whether it is in .csv or Mongo files, and there would also be licensing issues with me basically just copying and pasting raw data that belongs to someone else. You have to get, and then store, this stuff yourself. And of course at some point in a live system you would be updating this yourself.
 
-An easy way to bulk download data from [Barchart](https://www.barchart.com) is to create a Premier account, which allows for up to 100 data downloads per day, and to use [bc-utils](https://github.com/bug-or-feature/bc-utils) by [Andy Geach](https://github.com/bug-or-feature).
-We explain how to use it with pysystemtrade at the time of writing below, but we recommend that you read the bc-utils documentation in case these instructions become stale with updated versions of the tool.
-
-To set up bc-utils for use with pysystemtrade, you can use the following steps:
-1. Clone the bc-utils repo to some directory of your choice. For concreteness, we will be using `~/bc-utils` here.
-
-2. Edit `~/bc-utils/bcutils/config.py` to contain the list of contracts you want to download data for. 
-For example, 
-```python
-CONTRACT_MAP = {
-    "RICE": {"code": "ZR", "cycle": "FHKNUX", "tick_date": "2009-01-01"},
-    "SOYOIL": {"code": "ZL", "cycle": "FHKNQUVZ", "tick_date": "2008-05-04"},
-}
-```
-indicates that we are downloading data for the contracts ZR and ZL on Barchart and are matching them to the symbols RICE and SOYOIL, respectively, in pysystemtrade.
-Further, we are downloading the months FHKNUX and FHKNQUVZ, respectively, with hourly data starting from 2009-01-01 and 2008-05-04, respectively, and daily data before those dates.
-
-3. Replace the last code block in `~/bc-utils/bcutils/bc_utils.py` (starting from line 420, at [the time of writing](https://github.com/bug-or-feature/bc-utils/commit/3b95acaa2bbae87af3aaef65dd4f50839986a7d4)) with
-
-```python
-get_barchart_downloads(
-    create_bc_session(config=config),
-    contract_map=CONTRACT_MAP,
-    save_directory="BARCHART_DATA_DOWNLOAD_DIRECTORY",
-    start_year=1975,
-    end_year=2026,
-    dry_run=False)
-```
-(Here, you can set `dry_run` to `True` if you would like to try this script without using any of your 100 daily downloads.)
-
-4. In `~/bc-utils/bcutils/bc_utils.py`, set your Barchart username (BARCHART_USERNAME), password (BARCHART_PASSWORD), and the desired data path (BARCHART_DATA_DOWNLOAD_DIRECTORY) for the Barchart data here:
-```python
-'barchart_username': 'BARCHART_USERNAME',
-'barchart_password': 'BARCHART_PASSWORD'
-```
-
-5. If desired, add bc-utils to your crontab by adding a line like
-```
-00 08 * * 1-7 . $HOME/.profile; cd ~/bc-utils ; python3 bcutils/bc_utils.py >> $ECHO_PATH/barchart_download.txt 2>&1
-```
-This can be helpful given the daily limit of 100 downloads.
-
-6. Once you have downloaded the data you want, you can add them to the mongo database by running the following python snippet (with your chosen BARCHART_DATA_DOWNLOAD_DIRECTORY) from the pysystemtrade directory:
-```python
-from sysdata.csv.csv_futures_contract_prices import ConfigCsvFuturesPrices
-from sysinit.futures.contract_prices_from_csv_to_arctic import (
-    init_arctic_with_csv_futures_contract_prices,
-)
-
-
-barchart_csv_config = ConfigCsvFuturesPrices(input_date_index_name="Time",
-    input_skiprows=0,
-    input_skipfooter=1,
-    input_date_format="%Y-%m-%d",
-    input_column_mapping=dict(OPEN="Open", HIGH="High", LOW="Low", FINAL="Close", VOLUME="Volume"
-    ),
-)
-
-
-def transfer_barchart_prices_to_arctic(datapath):
-    init_arctic_with_csv_futures_contract_prices(
-        datapath, csv_config=barchart_csv_config
-    )
-
-
-transfer_barchart_prices_to_arctic(BARCHART_DATA_DOWNLOAD_DIRECTORY)
-```
+An easy way to bulk download data from [Barchart](https://www.barchart.com) is to create a Premier account, which allows for up to 250 data downloads per day, and to use [bc-utils](https://github.com/bug-or-feature/bc-utils). That project has a [guide for pysystemtrade users](https://github.com/bug-or-feature/bc-utils?tab=readme-ov-file#for-pysystemtrade-users).
 
 Alternatively, if you are very patient, you can manually download the data from the Barchart historical data pages, such as [this one 
 for Cotton #2](https://www.barchart.com/futures/quotes/KG*0/historical-download). 
-Then, to read the data, you can use [this script](/sysinit/futures/barchart_futures_contract_prices.py), which in turn calls this [other more general script](/sysinit/futures/contract_prices_from_csv_to_arctic.py). Although it's very specific to Barchart, with some work you should be able to adapt it. You will need to call it with the directory where your Barchart .csv files are stored.
+Then, to read the data, you can use [this script](/sysinit/futures/barchart_futures_contract_prices.py), which in turn calls this [other more general script](/sysinit/futures/contract_prices_from_csv_to_db.py). Although it's very specific to Barchart, with some work you should be able to adapt it. You will need to call it with the directory where your Barchart .csv files are stored.
 
 The script does two things:
 
@@ -276,18 +210,18 @@ Here we can see that the barchart files have one initial row we can ignore, and 
 The actual reading and writing is done here:
 
 ```python
-def init_arctic_with_csv_futures_contract_prices_for_code(instrument_code: str, datapath: str,
+def init_db_with_csv_futures_contract_prices_for_code(instrument_code: str, datapath: str,
                                                           csv_config=arg_not_supplied):
     print(instrument_code)
     csv_prices = csvFuturesContractPriceData(datapath, config=csv_config)
-    arctic_prices = arcticFuturesContractPriceData()
+    db_prices = diag_prices.db_futures_contract_price_data
 
     csv_price_dict = csv_prices.get_merged_prices_for_instrument(instrument_code)
 
     for contract_date_str, prices_for_contract in csv_price_dict.items():
         print(contract_date_str)
         contract = futuresContract(instrument_code, contract_date_str)
-        arctic_prices.write_merged_prices_for_contract_object(contract, prices_for_contract, ignore_duplication=True)
+        db_prices.write_merged_prices_for_contract_object(contract, prices_for_contract, ignore_duplication=True)
 ```
 
 The objects `csvFuturesContractPriceData` and `arcticFuturesContractPriceData` are 'data pipelines', which allow us to read and write a specific type of data (in this case OHLC price data for individual futures contracts). They have the same methods (and they inherit from a more generic object, futuresContractPriceData), which allows us to write code that abstracts the actual place and way the data is stored. We'll see much more of this kind of thing later.
@@ -295,7 +229,7 @@ The objects `csvFuturesContractPriceData` and `arcticFuturesContractPriceData` a
 <a name="roll_calendars"></a>
 ## Roll calendars
 
-We're now ready to set up a *roll calendar*. A roll calendar is the series of dates on which we roll from one futures contract to the next. It might be helpful to read [my blog post](https://qoppac.blogspot.co.uk/2015/05/systems-building-futures-rolling.html) on rolling futures contracts (though bear in mind some of the details relate to my original defunct trading system and do no reflect how pysystemtrade works).
+We're now ready to set up a *roll calendar*. A roll calendar is the series of dates on which we roll from one futures contract to the next. It might be helpful to read [my blog post](https://qoppac.blogspot.co.uk/2015/05/systems-building-futures-rolling.html) on rolling futures contracts (though bear in mind some of the details relate to my original defunct trading system and do not reflect how pysystemtrade works).
 
 You can see a roll calendar for Eurodollar futures, [here](/data/futures/roll_calendars_csv/EDOLLAR.csv). On each date we roll from the current_contract shown to the next_contract. We also see the current carry_contract; we use the differential between this and the current_contract to calculate forecasts for carry trading rules. The key thing is that on each roll date we *MUST* have prices for both the price and forward contract (we don't need carry). Here is a snippet from another roll calendar. This particular contract rolls quarterly on IMM dates (HMUZ), trades the first contract, and uses the second contract for carry. 
 
@@ -326,12 +260,12 @@ Then the roll calendar, plus the individual futures contract prices, can be used
 <a name="roll_calendars_from_approx"></a>
 ### Generate a roll calendar from actual futures prices
 
-This is the method you'd use if you were really starting from scratch, and you'd just got some prices for each futures contract. The relevant script is [here](/sysinit/futures/rollcalendars_from_arcticprices_to_csv.py); you should call the function `build_and_write_roll_calendar`. It is only set up to run a single instrument at a time: creating roll calendars is careful craftsmanship, not suited to a batch process.
+This is the method you'd use if you were really starting from scratch, and you'd just got some prices for each futures contract. The relevant script is [here](/sysinit/futures/rollcalendars_from_db_prices_to_csv.py); you should call the function `build_and_write_roll_calendar`. It is only set up to run a single instrument at a time: creating roll calendars is careful craftsmanship, not suited to a batch process.
 
 In this script (which you should run for each instrument in turn):
 
 - We get prices for individual futures contract [from Arctic](#arcticFuturesContractPriceData) that we created in the [previous stage](#get_historical_data)
-- We get roll parameters [from Mongo](#mongoRollParametersData), that [we made earlier](#set_up_roll_parameter_config) 
+- We get roll parameters [from the csv file](#csvRollParametersData), that [we made earlier](#set_up_roll_parameter_config) 
 - We calculate the roll calendar: 
 `roll_calendar = rollCalendar.create_from_prices(dict_of_futures_contract_prices, roll_parameters)` based on the `ExpiryOffset` parameter stored in the instrument roll parameters we already setup. 
 - We do some checks on the roll calendar, for monotonicity and validity (these checks will generate warnings if things go wrong)
@@ -387,7 +321,7 @@ A *valid* roll calendar will have current and next contract prices on the roll d
 
 #### Manually editing roll calendars
 
-Roll calendars are stored in .csv format [and here is an example](/data/futures/roll_calendars_csv/EDOLLAR.csv). Of course you could put these into Mongo DB, or Arctic, but I like the ability to hack them if required; plus we only use them when starting the system up from scratch. If you have to manually edit your .csv roll calendars, you can easily load them up and check they are monotonic and valid. The function [`check_saved_roll_calendar`](/sysinit/futures/rollcalendars_from_arcticprices_to_csv.py) is your friend. Just make sure you are using the right datapath.
+Roll calendars are stored in .csv format [and here is an example](/data/futures/roll_calendars_csv/EDOLLAR.csv). Of course you could put these into Mongo DB, or Arctic, but I like the ability to hack them if required; plus we only use them when starting the system up from scratch. If you have to manually edit your .csv roll calendars, you can easily load them up and check they are monotonic and valid. The function [`check_saved_roll_calendar`](/sysinit/futures/rollcalendars_from_db_prices_to_csv.py) is your friend. Just make sure you are using the right datapath.
 
 
 <a name="roll_calendars_from_multiple"></a>
@@ -416,7 +350,7 @@ The next stage is to create and store *multiple prices*. Multiple prices are the
 
 ### Creating multiple prices from contract prices
 
-The [relevant script is here](/sysinit/futures/multipleprices_from_arcticprices_and_csv_calendars_to_arctic.py).
+The [relevant script is here](/sysinit/futures/multipleprices_from_db_prices_and_csv_calendars_to_db.py).
 
 The script should be reasonably self explanatory in terms of data pipelines, but it's worth briefly reviewing what it does:
 
@@ -433,7 +367,7 @@ Step 5 can sometimes throw up warnings or outright errors if things don't look r
 <a name="mult_adj_csv_to_arctic"></a>
 ### Writing multiple prices from .csv to database
 
-The use case here is you are happy to use the shipped .csv data, even though it's probably out of date, but you want to use a database for backtesting. You don't want to try and find and upload individual futures prices, or create roll calendars.... the good news is you don't have to. Instead you can just use [this script](/sysinit/futures/multiple_and_adjusted_from_csv_to_arctic.py) which will just copy from .csv (default ['shipping' directory](/data/futures/multiple_prices_csv)) to Arctic.
+The use case here is you are happy to use the shipped .csv data, even though it's probably out of date, but you want to use a database for backtesting. You don't want to try and find and upload individual futures prices, or create roll calendars.... the good news is you don't have to. Instead you can just use [this script](/sysinit/futures/multiple_and_adjusted_from_csv_to_db.py) which will just copy from .csv (default ['shipping' directory](/data/futures/multiple_prices_csv)) to Arctic.
 
 This will also copy adjusted prices, so you can now skip ahead to [creating FX data](#create_fx_data).
 
@@ -465,18 +399,20 @@ spliced_multiple_prices = os.path.join('data', 'futures', 'multiple_prices_csv_s
 if not os.path.exists(spliced_multiple_prices):
     os.makedirs(spliced_multiple_prices)
 
-from sysinit.futures.rollcalendars_from_arcticprices_to_csv import build_and_write_roll_calendar
+from sysinit.futures.rollcalendars_from_db_prices_to_csv import build_and_write_roll_calendar
 instrument_code = 'GAS_US_mini' # for example
 build_and_write_roll_calendar(instrument_code, 
     output_datapath=roll_calendars_from_arctic)
 ```
-We use our updated prices and the roll calendar just built to [calculate multiple prices](#/sysinit/futures/multipleprices_from_arcticprices_and_csv_calendars_to_arctic):
-```python
-from sysinit.futures.multipleprices_from_arcticprices_and_csv_calendars_to_arctic import process_multiple_prices_single_instrument
+We use our updated prices and the roll calendar just built to [calculate multiple prices](#/sysinit/futures/multipleprices_from_db_prices_and_csv_calendars_to_arctic):
 
-process_multiple_prices_single_instrument(instrument_code, 
-    csv_multiple_data_path=multiple_prices_from_arctic, ADD_TO_ARCTIC=False, 
-    csv_roll_data_path=roll_calendars_from_arctic, ADD_TO_CSV=True)
+```python
+from sysinit.futures.multipleprices_from_db_prices_and_csv_calendars_to_db import
+    process_multiple_prices_single_instrument
+
+process_multiple_prices_single_instrument(instrument_code,
+                                          csv_multiple_data_path=multiple_prices_from_arctic, ADD_TO_ARCTIC=False,
+                                          csv_roll_data_path=roll_calendars_from_arctic, ADD_TO_CSV=True)
 ```
 
 ...which we splice onto the repo data (checking that the price and forward contracts match):
@@ -514,14 +450,14 @@ assert(supplied.iloc[-1].FORWARD_CONTRACT == generated.loc[last_supplied:].iloc[
 spliced = pd.concat([supplied, generated])
 spliced.to_csv(os.path.join(spliced_multiple_prices, instrument_code+'.csv'))
 
-from sysinit.futures.multiple_and_adjusted_from_csv_to_arctic import init_arctic_with_csv_prices_for_code
-init_arctic_with_csv_prices_for_code(instrument_code, multiple_price_datapath=spliced_multiple_prices)
+from sysinit.futures.multiple_and_adjusted_from_csv_to_db import init_db_with_csv_prices_for_code
+init_db_with_csv_prices_for_code(instrument_code, multiple_price_datapath=spliced_multiple_prices)
 ```
 
 <a name="back_adjusted_prices"></a>
 ## Creating and storing back adjusted prices
 
-Once we have multiple prices we can then create a backadjusted price series. The [relevant script](/sysinit/futures/adjustedprices_from_mongo_multiple_to_mongo.py) will read multiple prices from Arctic, do the backadjustment, and then write the prices to Arctic (and optionally to .csv if you want to use that for backup or simulation purposes). It's easy to modify this to read/write to/from different sources.
+Once we have multiple prices we can then create a backadjusted price series. The [relevant script](/sysinit/futures/adjustedprices_from_db_multiple_to_db.py) will read multiple prices from Arctic, do the backadjustment, and then write the prices to Arctic (and optionally to .csv if you want to use that for backup or simulation purposes). It's easy to modify this to read/write to/from different sources.
 
 
 ### Changing the stitching method
@@ -544,7 +480,7 @@ data=csvFxPricesData()
 data.get_fx_prices("GBPUSD")
 ```
 
-Save the files in a directory with no other content, using the filename format "GBPUSD.csv". Using [this simple script](/sysinit/futures/spotfx_from_csvAndInvestingDotCom_to_arctic.py) they are written to Arctic and/or .csv files. You will need to modify the script to point to the right directory, and you can also change the column and formatting parameters to use data from other sources.
+Save the files in a directory with no other content, using the filename format "GBPUSD.csv". Using [this simple script](/sysinit/futures/spotfx_from_csvAndInvestingDotCom_to_db.py) they are written to Arctic and/or .csv files. You will need to modify the script to point to the right directory, and you can also change the column and formatting parameters to use data from other sources.
 
 You can also run the script with `ADD_EXTRA_DATA = False, ADD_TO_CSV = True`. Then it will just do a straight copy from provided .csv data to Arctic. Your data will be stale, but in production it will automatically be updated with data from IB (as long as the provided data isn't more than a year out of date, since IB will give you only a year of daily prices).
 
@@ -571,7 +507,7 @@ That's it. You've got all the price and configuration data you need to start liv
 
 The paradigm for data storage is that we have a bunch of [*data objects*](#generic_objects) for specific types of data used in both backtesting and simulation, i.e. `futuresInstrument` is the generic class for storing static information about instruments. [Another set](#production_data_objects) of data objects is only used in production.
 
-Each of those data objects then has a matching *data storage object* which accesses data for that object, i.e. futuresInstrumentData. Then we have [specific instances of those for different data sources](#specific_data_storage), i.e. `mongoFuturesInstrumentData` for storing instrument data in a mongo DB database. 
+Each of those data objects then has a matching *data storage object* which accesses data for that object, i.e. futuresInstrumentData. Then we have [specific instances of those for different data sources](#specific_data_storage), i.e. `csvFuturesInstrumentData` for storing instrument data in a csv file. 
 
 I use [`dataBlob`s](/sysdata/data_blob.py) to access collections of data storage objects in both simulation and production. This also hides the exact source of the data and ensures that data objects are using a common database, logging method, and brokerage connection (since the broker is also accessed via data storage objects). More [later](#data_blobs).
 
@@ -653,18 +589,12 @@ Production only data storage objects:
         - `brokerOrderStackData`
             - `mongoBrokerOrderStackData`
 
-Used for logging:
-    - `pst_logger`
-        - `logtoscreen`
-        - `logToDb`
-            - `logToMongod`
-
-
+    
 Specific data sources
 
 - Mongo / Arctic
     - `mongoDb`: Connection to a database (arctic or mongo) specifying port, databasename and hostname. Usually created by a `dataBlob`, and the instance is used to create various `mongoConnection`
-    - `mongoConnection`: Creates a connection (combination of database and specific collection) that is created inside object like `mongoRollParametersData`, using a `mongoDb`
+    - `mongoConnection`: Creates a connection (combination of database and specific collection) that is created inside object like `mongoPositionLimitData`, using a `mongoDb`
     - `mongoData`: Provides a common abstract interface to mongo, assuming the data is in dicts. Has different classes for single or multiple keys.
     - `arcticData`: Provides a common abstract interface to arctic, assuming the data is passed as pd.DataFrame
 - Interactive brokers: see [this file](/docs/IB.md)
@@ -684,9 +614,7 @@ Simulation interface layer:
                 - [csvFuturesSimData](/sysdata/sim/csv_futures_sim_data.py): Access to sim data in .csv files
                 - [dbFuturesSimData](/sysdata/sim/db_futures_sim_data.py): Access to sim data in arctic / mongodb files
 
-
-
-
+    
 ## Directory structure (not the whole package! Just related to data objects, storage and interfaces)
 
 - [/sysbrokers/IB/](/sysbrokers/IB/): IB specific data storage / access objects
@@ -700,7 +628,6 @@ Simulation interface layer:
     - [/sysdata/csv/](/sysdata/csv/): Data storage objects, csv specific
     - [/sysdata/sim/](/sysdata/sim/): Backtesting interface layer
 - [/sysexecution/](/sysexecution/): Order and order stack data objects
-- [/syslogdiag/](/syslogdiag): Logging data objects
 - [/sysobjects/](/sysobjects/): Most production and generic (backtesting and production) data objects live here
 - [/sysproduction/data/](/sysproduction/data/): Production interface layer
 
@@ -867,11 +794,11 @@ If your mongoDB is running on your local machine then you can stick with the def
 
 ```python
 # Instead of:
-mfidata=mongoFuturesInstrumentData()
+adj_data=arcticFuturesAdjustedPricesData()
 
 # Do this
 from sysdata.mongodb import mongoDb
-mfidata=mongoFuturesInstrumentData(mongo_db = mongoDb(mongo_database_name='another database')) # could also change host
+adj_data=arcticFuturesAdjustedPricesData(mongo_db = mongoDb(mongo_database_name='another database')) # could also change host
 ```
 
 <a name="arctic"></a>
@@ -989,7 +916,7 @@ Here's a quick whistle-stop tour of dataBlob's other features:
 
 
 - you can create it with a starting class list by passing the `parameter class_list=...`
-- it includes a `log` attribute that is passed to create data storage instances (you can override this by passing in a pst_logger via the `log=` parameter when dataBlob is created), the log will have top level type attribute as defined by the log_name parameter
+- it includes a `log` attribute that is passed to create data storage instances (you can override this by passing in a logger via the `log=` parameter when dataBlob is created), the log will have top level type attribute as defined by the log_name parameter
 - when required it creates a `mongoDb` instance that is passed to create data storage instances (you can override this by passing in a `mongoDb` instance via the `mongo_db=` parameter when dataBlob is created)
 - when required it creates a `connectionIB` instance that is passed to create data storage instances (you can override this by passing in a connection instance via the `ib_conn=` parameter when dataBlob is created)
 - The parameter `csv_data_paths` will allow you to use different .csv data paths, not the defaults. The dict should have the keys of the class names, and values will be the paths to use.
@@ -1045,7 +972,7 @@ Of course it's also possible to mix these two methods. Once you have the data it
 ```python
 from systems.provided.futures_chapter15.basesystem import futures_system
 from sysdata.sim.db_futures_sim_data import dbFuturesSimData
-system = futures_system(data = dbFuturesSimData(), log_level="on")
+system = futures_system(data = dbFuturesSimData())
 print(system.data.get_instrument_list())
 ```
 #### A note about multiple configuration files
@@ -1079,12 +1006,12 @@ from sysdata.csv.csv_spot_fx import csvFxPricesData
 
 class dbFuturesSimData2(genericBlobUsingFuturesSimData):
     def __init__(self, data: dataBlob = arg_not_supplied,
-                 log =logtoscreen("dbFuturesSimData")):
+                 log =get_logger("dbFuturesSimData")):
 
         if data is arg_not_supplied:
             data = dataBlob(log = log,
                               class_list=[arcticFuturesAdjustedPricesData, arcticFuturesMultiplePricesData,
-                         csvFxPricesData, mongoFuturesInstrumentData], csv_data_paths = {'csvFxPricesData': 'some_path'})
+                         csvFxPricesData, csvFuturesInstrumentData], csv_data_paths = {'csvFxPricesData': 'some_path'})
 
         super().__init__(data=data)
 
@@ -1093,7 +1020,7 @@ class dbFuturesSimData2(genericBlobUsingFuturesSimData):
             self.get_instrument_list())
 
 
->>> system = futures_system(data = dbFuturesSimData2(), log_level="on")
+>>> system = futures_system(data = dbFuturesSimData2())
 >>> system.data.data.db_futures_multiple_prices
 
 simData connection for multiple futures prices, arctic production/futures_multiple_prices @ 127.0.0.1 
@@ -1111,7 +1038,6 @@ csvFxPricesData accessing data.futures.fx_prices_csv
 In production I use the objects in [this module](/sysproduction/data) to act as interfaces between production code and data blobs, so that production code doesn't need to be too concerned about the exact implementation of the data storage. These also include some business logic. 
 
 `diag` classes are read only, `update` are write only, `data` are read/write (created because it's not worth creating a separate read and write class):
-
 - `dataBacktest`: read/write pickled backtests from production `run_systems`
 - `dataBroker`: interact with broker
 - `dataCapital`: read/write total and strategy capital
@@ -1122,7 +1048,6 @@ In production I use the objects in [this module](/sysproduction/data) to act as 
 - `dataPositionLimits`: read/write position limits 
 - `dataTradeLimits`: read/write limits on individual trades
 - `diagInstruments`: get configuration for instruments
-- `diagLogs`: read logging information
 - `dataOrders`: read/write historic orders and order 'stacks' (current orders)
 - `diagPositions`, `updatePositions`: Read/Write historic and current positions
 - `dataOptimalPositions`: Read/Write optimal position data

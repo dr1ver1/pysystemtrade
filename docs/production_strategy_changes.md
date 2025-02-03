@@ -144,7 +144,7 @@ Using the interactive_controls script, you may want to create strategy specific 
 
 # Manually generate instrument orders
 
-I'd recommend running the `update_strategy_orders` script. You can run these for both the new and existing strategies. If you're replacing an existing strategy, all the optimal positions should be zero, and if you've transferred all the positions it shouldn't generate any traders.
+I'd recommend running the `update_strategy_orders` script. You can run these for both the new and existing strategies. If you're replacing an existing strategy, all the optimal positions should be zero, and if you've transferred all the positions it shouldn't generate any trades.
 
 It may be worth running `interactive_order_stack` and looking at both positions and the instrument order stack to check all is as expected.
 
@@ -188,7 +188,7 @@ Under ignore_instruments in the .yaml configuration, I suggest you include only 
 
 ### Set shadow cost
 
-The shadow cost is a key variable which is set in the private_config.yaml file (*not* the backtest configuration file, since it is used 'outside' the backtest in the strategy order generation). The default value is 10, but you may want to initially begin with a very large value (eg 500) and gradually reduce it over the first few days. This will produce a more gradual adjustment from old to new strategy positions, although bear in mind that any strategy position with the wrong sign will immediately be closed regardless of the shadow_cost value unless you set this instrument to don't trade.
+The shadow cost is a key variable which is set in the private_config.yaml file (*not* the backtest configuration file, since it is used 'outside' the backtest in the strategy order generation). The default value is 50, but you may want to initially begin with a very large value (eg 500) and gradually reduce it over the first few days. This will produce a more gradual adjustment from old to new strategy positions, although bear in mind that any strategy position with the wrong sign will immediately be closed regardless of the shadow_cost value unless you set this instrument to don't trade.
 
 
 ### Strategy backtest output of optimal positions

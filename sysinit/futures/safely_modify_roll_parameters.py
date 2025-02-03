@@ -8,13 +8,13 @@ from syscore.interactive.input import (
     get_input_from_user_and_convert_to_type,
 )
 from sysdata.data_blob import dataBlob
-from sysinit.futures.rollcalendars_from_arcticprices_to_csv import (
+from sysinit.futures.rollcalendars_from_db_prices_to_csv import (
     build_and_write_roll_calendar,
 )
-from sysinit.futures.multipleprices_from_arcticprices_and_csv_calendars_to_arctic import (
+from sysinit.futures.multipleprices_from_db_prices_and_csv_calendars_to_db import (
     process_multiple_prices_single_instrument,
 )
-from sysinit.futures.adjustedprices_from_mongo_multiple_to_mongo import (
+from sysinit.futures.adjustedprices_from_db_multiple_to_db import (
     process_adjusted_prices_single_instrument,
 )
 from sysobjects.rolls import rollParameters
@@ -58,14 +58,14 @@ def safely_modify_roll_parameters(data: dataBlob):
     new_multiple_prices = process_multiple_prices_single_instrument(
         instrument_code=instrument_code,
         csv_roll_data_path=output_path_for_temp_csv_files,
+        ADD_TO_DB=False,
         ADD_TO_CSV=False,
-        ADD_TO_ARCTIC=False,
     )
     new_adjusted_prices = process_adjusted_prices_single_instrument(
         instrument_code,
         multiple_prices=new_multiple_prices,
+        ADD_TO_DB=False,
         ADD_TO_CSV=False,
-        ADD_TO_ARCTIC=False,
     )
 
     diag_prices = diagPrices(data)
@@ -148,7 +148,7 @@ def safely_modify_roll_parameters(data: dataBlob):
 
 
 def modified_roll_parameters(data: dataBlob, instrument_code) -> rollParameters:
-    print("Existing roll parameters: Must be defined in database config")
+    print("Existing roll parameters: Must be defined in CSV config")
     data_contracts = dataContracts(data)
     roll_parameters = data_contracts.get_roll_parameters(instrument_code)
     print(str(roll_parameters))

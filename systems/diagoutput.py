@@ -252,7 +252,6 @@ class systemDiag(object):
             "instrument_div_multiplier",
         ],
     ):
-
         output_dict = {}
         for config_item in attr_names:
             dict_function = getattr(self, config_item)
@@ -276,7 +275,6 @@ class systemDiag(object):
             "instrument_div_multiplier",
         ],
     ):
-
         output_dict = self.output_config_with_estimated_parameters(
             attr_names=attr_names
         )
@@ -299,7 +297,7 @@ class systemDiag(object):
             "positionSize.get_instrument_currency_vol",
             "positionSize.get_fx_rate",
             "positionSize.get_instrument_value_vol",
-            "positionSize.get_volatility_scalar",
+            "positionSize.get_average_position_at_subsystem_level",
             "positionSize.get_subsystem_position",
             "portfolio.get_notional_position",
         ]

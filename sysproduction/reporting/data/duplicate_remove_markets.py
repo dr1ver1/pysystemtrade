@@ -2,10 +2,13 @@ import numpy as np
 import pandas as pd
 from dataclasses import dataclass
 
-from syscore.constants import named_object
-from syscore.exceptions import missingData
-from sysdata.config.instruments import generate_matching_duplicate_dict
-from sysdata.config.production_config import get_production_config
+from syscore.constants import named_object, arg_not_supplied
+from syscore.genutils import list_union
+from sysdata.config.instruments import (
+    generate_matching_duplicate_dict,
+    get_list_of_ignored_instruments_in_config,
+    get_list_of_bad_instruments_in_config,
+)
 from sysproduction.reporting.data.constants import (
     MAX_SR_COST,
     MIN_VOLUME_CONTRACTS_DAILY,
@@ -18,6 +21,7 @@ from sysproduction.reporting.reporting_functions import table
 from sysproduction.reporting.data.costs import (
     get_table_of_SR_costs,
 )
+from sysproduction.data.config import get_list_of_stale_instruments_given_config
 from sysproduction.reporting.data.volume import get_liquidity_data_df
 from sysproduction.reporting.data.risk import get_instrument_risk_table
 
@@ -46,6 +50,7 @@ class RemoveMarketData:
     auto_parameters: parametersForAutoPopulation
 
     existing_bad_markets: list
+    exclude_markets: list
 
     @property
     def str_existing_markets_to_remove(self) -> str:
@@ -80,7 +85,7 @@ class RemoveMarketData:
             clean_slate_list_of_bad_markets
         )
         return (
-            "Use the following if you want to minimise turnover of markets\n%s "
+            "Use the following if you want a clean slate without considering existing markets \n%s "
             % market_config_as_yaml_str
         )
 
@@ -91,7 +96,7 @@ class RemoveMarketData:
             recommended_list_of_bad_markets
         )
         return (
-            "Use the following if you want a clean slate without considering existing markets \n%s "
+            "Use the following if you want to minimise turnover of markets\n%s "
             % market_config_as_yaml_str
         )
 
@@ -114,12 +119,16 @@ class RemoveMarketData:
 
     def removed_markets_addback(self) -> list:
         existing_bad_markets = self.existing_bad_markets
+        exclude_markets = self.exclude_markets
 
         ## To be allowed to trade an existing bad market must be well above the threshold for not being a bad market
         bad_markets = self.bad_markets(apply_higher_threshold=True)
 
+        # Markets to be added back = (existing bad markets - new bad markets) - (ignored and stale instruments)
         removed_bad_markets = list(
-            set(existing_bad_markets).difference(set(bad_markets))
+            set(existing_bad_markets)
+            .difference(set(bad_markets))
+            .difference(set(exclude_markets))
         )
 
         return removed_bad_markets
@@ -127,7 +136,6 @@ class RemoveMarketData:
     def bad_markets(
         self, apply_higher_threshold=False, apply_lower_threshold=False
     ) -> list:
-
         threshold_factor = calculate_threshold_factor(
             apply_lower_threshold=apply_lower_threshold,
             apply_higher_threshold=apply_higher_threshold,
@@ -175,7 +183,6 @@ class RemoveMarketData:
         SR_costs = self.SR_costs
         max_cost = self.max_cost / threshold_factor
         expensive = list(SR_costs[SR_costs.SR_cost > max_cost].index)
-
         expensive.sort()
 
         return expensive
@@ -298,8 +305,6 @@ def _yaml_bad_market_list(list_of_bad_markets: list) -> str:
 
 
 def get_remove_market_data(data) -> RemoveMarketData:
-    existing_bad_markets = get_existing_bad_markets(data)
-
     (
         max_cost,
         min_volume_contracts,
@@ -307,7 +312,16 @@ def get_remove_market_data(data) -> RemoveMarketData:
     ) = get_bad_market_filter_parameters()
 
     auto_parameters = get_auto_population_parameters()
-    SR_costs, liquidity_data, risk_data = get_data_for_markets(data)
+
+    existing_bad_markets = get_list_of_bad_markets(data)
+
+    ignored_instruments = get_ignored_instruments(data)
+    stale_instruments = get_stale_instruments(data)
+    exclude_instruments = list_union(ignored_instruments, stale_instruments)
+
+    SR_costs, liquidity_data, risk_data = get_data_for_markets(
+        data, exclude_instruments=exclude_instruments
+    )
 
     return RemoveMarketData(
         SR_costs=SR_costs,
@@ -318,6 +332,7 @@ def get_remove_market_data(data) -> RemoveMarketData:
         min_volume_contracts=min_volume_contracts,
         existing_bad_markets=existing_bad_markets,
         auto_parameters=auto_parameters,
+        exclude_markets=exclude_instruments,
     )
 
 
@@ -390,29 +405,38 @@ def from_auto_parameters_to_min_ann_perc_std(
     )
 
 
-def get_data_for_markets(data):
-    SR_costs = get_table_of_SR_costs(data)
+def get_data_for_markets(data, exclude_instruments: list = arg_not_supplied):
+    SR_costs = get_table_of_SR_costs(data, exclude_instruments=exclude_instruments)
     SR_costs = SR_costs.dropna()
-    liquidity_data = get_liquidity_data_df(data)
-    risk_data = get_instrument_risk_table(data, only_held_instruments=False)
+    liquidity_data = get_liquidity_data_df(
+        data, exclude_instruments=exclude_instruments
+    )
+    risk_data = get_instrument_risk_table(
+        data, only_held_instruments=False, exclude_instruments=exclude_instruments
+    )
 
     return SR_costs, liquidity_data, risk_data
 
 
-def get_existing_bad_markets(data):
+def get_ignored_instruments(data) -> list:
     production_config = data.config
+    ignored_instruments = get_list_of_ignored_instruments_in_config(production_config)
 
-    try:
-        excluded_markets_config_element = production_config.get_element(
-            "exclude_instrument_lists"
-        )
-    except missingData:
-        print("NO BAD MARKETS IN CONFIG!")
-        existing_bad_markets = []
-    else:
-        existing_bad_markets = excluded_markets_config_element.get("bad_markets", [])
+    return ignored_instruments
 
-    return existing_bad_markets
+
+def get_stale_instruments(data) -> list:
+    production_config = data.config
+    stale_instruments = get_list_of_stale_instruments_given_config(production_config)
+
+    return stale_instruments
+
+
+def get_list_of_bad_markets(data):
+    production_config = data.config
+    bad_markets = get_list_of_bad_instruments_in_config(production_config)
+
+    return bad_markets
 
 
 def table_of_duplicate_markets_for_dict_entry(
@@ -505,7 +529,6 @@ def get_bad_market_filter_parameters():
 def calculate_threshold_factor(
     apply_lower_threshold: bool = False, apply_higher_threshold: bool = False
 ) -> float:
-
     ## The threshold factor is a number we apply
     ## To be stopped from trading an existing market must be well below the threshold for not being a bad market
     ## To be added to trading an existing bad market must be well above the threshold for not being a bad market

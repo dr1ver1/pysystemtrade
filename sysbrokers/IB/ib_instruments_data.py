@@ -12,12 +12,11 @@ from sysbrokers.IB.ib_contracts import ibContract
 from sysbrokers.IB.ib_connection import connectionIB
 from sysbrokers.IB.client.ib_client import ibClient
 from sysbrokers.broker_instrument_data import brokerFuturesInstrumentData
+from syscore.exceptions import missingFile
 
-from syscore.constants import missing_contract
-from syscore.exceptions import missingContract
 from sysdata.data_blob import dataBlob
 
-from syslogdiag.log_to_screen import logtoscreen
+from syslogging.logger import *
 
 
 class ibFuturesInstrumentData(brokerFuturesInstrumentData):
@@ -25,7 +24,7 @@ class ibFuturesInstrumentData(brokerFuturesInstrumentData):
         self,
         ibconnection: connectionIB,
         data: dataBlob,
-        log=logtoscreen("ibFuturesInstrumentData"),
+        log=get_logger("ibFuturesInstrumentData"),
     ):
         super().__init__(log=log, data=data)
         self._ibconnection = ibconnection
@@ -42,9 +41,6 @@ class ibFuturesInstrumentData(brokerFuturesInstrumentData):
             )
         )
 
-        if instrument_code is missing_contract:
-            raise missingContract
-
         return instrument_code
 
     def _get_instrument_data_without_checking(self, instrument_code: str):
@@ -53,7 +49,6 @@ class ibFuturesInstrumentData(brokerFuturesInstrumentData):
     def get_futures_instrument_object_with_IB_data(
         self, instrument_code: str
     ) -> futuresInstrumentWithIBConfigData:
-
         config = self.ib_config
         instrument_object = get_instrument_object_from_config(
             instrument_code, log=self.log, config=config
@@ -69,8 +64,15 @@ class ibFuturesInstrumentData(brokerFuturesInstrumentData):
         :return: list of str
         """
 
-        config = self.ib_config
-        instrument_list = get_instrument_list_from_ib_config(config, log=self.log)
+        try:
+            config = self.ib_config
+        except missingFile:
+            self.log.warning(
+                "Can't get list of instruments because IB config file missing"
+            )
+            return []
+
+        instrument_list = get_instrument_list_from_ib_config(config)
 
         return instrument_list
 
@@ -98,7 +100,6 @@ class ibFuturesInstrumentData(brokerFuturesInstrumentData):
         return self._ibconnection
 
     def _get_and_set_ib_config_from_file(self) -> IBconfig:
-
         config_data = read_ib_config_from_file(log=self.log)
 
         return config_data

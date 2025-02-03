@@ -1,5 +1,5 @@
 import pandas as pd
-from syslogdiag.log_to_screen import logtoscreen, pst_logger
+from syslogging.logger import *
 from sysquant.optimisation.pre_processing import returnsPreProcessor
 from sysquant.optimisation.optimise_over_time import optimiseWeightsOverTime
 from sysquant.optimisation.SR_adjustment import adjust_dataframe_of_weights_for_SR_costs
@@ -11,10 +11,9 @@ class genericOptimiser(object):
         self,
         returns_pre_processor: returnsPreProcessor,
         asset_name: str = SINGLE_NAME,
-        log: pst_logger = logtoscreen("optimiser"),
+        log=get_logger("optimiser"),
         **weighting_params,
     ):
-
         net_returns = returns_pre_processor.get_net_returns(asset_name)
 
         self._net_returns = net_returns
@@ -28,7 +27,7 @@ class genericOptimiser(object):
         return self._net_returns
 
     @property
-    def log(self) -> pst_logger:
+    def log(self):
         return self._log
 
     @property
@@ -55,12 +54,31 @@ class genericOptimiser(object):
         ## apply cost weight
         return weights
 
+    @property
+    def fit_dates(self) -> list:
+        return self.optimiser.fit_dates
+
+    @property
+    def correlation_estimator(self):
+        return self.optimiser.correlation_estimator
+
+    @property
+    def mean_estimator(self):
+        return self.optimiser.mean_estimator
+
+    @property
+    def stdev_estimator(self):
+        return self.optimiser.stdev_estimator
+
     def raw_weights(self) -> pd.DataFrame:
+        return self.optimiser.weights()
+
+    @property
+    def optimiser(self) -> optimiseWeightsOverTime:
         optimiser = optimiseWeightsOverTime(
             self.net_returns, log=self.log, **self.weighting_params
         )
-
-        return optimiser.weights()
+        return optimiser
 
     def weights_post_processing(self, weights: pd.DataFrame) -> pd.DataFrame:
         # apply cost weights

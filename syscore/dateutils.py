@@ -13,7 +13,7 @@ import pandas as pd
 import numpy as np
 
 from syscore.exceptions import missingData
-from syscore.constants import missing_data, arg_not_supplied
+from syscore.constants import arg_not_supplied
 
 """
 
@@ -62,7 +62,6 @@ def calculate_start_and_end_dates(
     start_period: str = arg_not_supplied,
     end_period: str = arg_not_supplied,
 ) -> Tuple[datetime.datetime, datetime.datetime]:
-
     resolved_end_date = _resolve_end_date_given_period_and_explicit_end_date(
         end_date=end_date, end_period=end_period
     )
@@ -362,10 +361,11 @@ def from_config_frequency_pandas_resample(freq: Frequency) -> str:
         Frequency.Seconds_10: "10S",
         Frequency.Second: "S",
     }
-    resample_string = LOOKUP_TABLE.get(freq, missing_data)
 
-    if resample_string is missing_data:
-        raise missingData("Resample frequency %s is not supported" % freq)
+    try:
+        resample_string = LOOKUP_TABLE[freq]
+    except KeyError as e:
+        raise missingData("Resample frequency %s is not supported" % freq) from e
 
     return resample_string
 
@@ -390,10 +390,11 @@ def from_frequency_to_times_per_year(freq: Frequency) -> float:
         Frequency.Seconds_10: SECONDS_IN_YEAR / 10,
         Frequency.Second: SECONDS_IN_YEAR,
     }
-    times_per_year = LOOKUP_TABLE.get(freq, missing_data)
 
-    if times_per_year is missing_data:
-        raise missingData("Frequency %s is not supported" % freq)
+    try:
+        times_per_year = LOOKUP_TABLE[freq]
+    except KeyError as e:
+        raise missingData("Frequency %s is not supported" % freq) from e
 
     return float(times_per_year)
 
@@ -419,10 +420,10 @@ def from_config_frequency_to_frequency(freq_as_str: str) -> Frequency:
         "S": Frequency.Second,
     }
 
-    frequency = LOOKUP_TABLE.get(freq_as_str, missing_data)
-
-    if frequency is missing_data:
-        raise missingData("Frequency %s is not supported" % freq_as_str)
+    try:
+        frequency = LOOKUP_TABLE[freq_as_str]
+    except KeyError as e:
+        raise missingData("Frequency %s is not supported" % freq_as_str) from e
 
     return frequency
 
@@ -651,7 +652,6 @@ def check_time_matches_closing_time_to_second(
         and index_entry.minute == closing_time.minutes
         and index_entry.second == closing_time.seconds
     ):
-
         return True
     else:
         return False
@@ -673,7 +673,6 @@ def strip_timezone_fromdatetime(timestamp_with_tz_info) -> datetime.datetime:
 def generate_equal_dates_within_year(
     year: int, number_of_dates: int, force_start_year_align: bool = False
 ) -> List[datetime.datetime]:
-
     """
     Generate equally spaced datetimes within a given year
     >>> generate_equal_dates_within_year(2022,3)
@@ -703,7 +702,6 @@ def generate_equal_dates_within_year(
 def _calculate_first_date_for_equal_dates(
     year: int, days_between_periods: int, force_start_year_align: bool = False
 ) -> datetime.datetime:
-
     start_of_year = datetime.datetime(year, 1, 1)
 
     if force_start_year_align:

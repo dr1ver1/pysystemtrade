@@ -146,7 +146,6 @@ def calculate_optimised_positions_data(
     strategy_name: str,
     raw_optimal_position_data: dict,
 ) -> dict:
-
     data_for_objective = get_data_for_objective_instance(
         data,
         strategy_name=strategy_name,
@@ -178,7 +177,6 @@ class dataForObjectiveInstance:
     maximum_position_contracts: portfolioWeights
     constraints: constraintsForDynamicOpt
     speed_control: speedControlForDynamicOpt
-    constraints: constraintsForDynamicOpt
 
     @property
     def weights_prior(self) -> portfolioWeights:
@@ -205,9 +203,8 @@ def get_data_for_objective_instance(
     previous_positions: dict,
     raw_optimal_position_data: dict,
 ) -> dataForObjectiveInstance:
-
     list_of_instruments = list(raw_optimal_position_data.keys())
-    data.log.msg("Getting data for optimisation")
+    data.log.debug("Getting data for optimisation")
 
     previous_positions_as_weights_object = portfolioWeights(previous_positions)
     previous_positions_as_weights_object = (
@@ -244,19 +241,19 @@ def get_data_for_objective_instance(
         ]
     )
 
-    data.log.msg("Getting maximum positions")
+    data.log.debug("Getting maximum positions")
     maximum_position_contracts = get_maximum_position_contracts(
         data, strategy_name=strategy_name, list_of_instruments=list_of_instruments
     )
 
-    data.log.msg("Getting covariance matrix")
+    data.log.debug("Getting covariance matrix")
 
-    data.log.msg("Getting per contract values")
+    data.log.debug("Getting per contract values")
     per_contract_value = get_per_contract_values(
         data, strategy_name=strategy_name, list_of_instruments=list_of_instruments
     )
 
-    data.log.msg("Getting costs")
+    data.log.debug("Getting costs")
     costs = calculate_costs_per_portfolio_weight(
         data,
         per_contract_value=per_contract_value,
@@ -294,7 +291,6 @@ def get_data_for_objective_instance(
 def get_maximum_position_contracts(
     data, strategy_name: str, list_of_instruments: list
 ) -> portfolioWeights:
-
     maximum_position_contracts = dict(
         [
             (
@@ -316,7 +312,6 @@ def get_maximum_position_contracts(
 def get_maximum_position_contracts_for_instrument_strategy(
     data: dataBlob, instrument_strategy: instrumentStrategy
 ) -> int:
-
     override = get_override_for_instrument_strategy(data, instrument_strategy)
     if override == CLOSE_OVERRIDE:
         return 0
@@ -337,7 +332,6 @@ def get_maximum_position_contracts_for_instrument_strategy(
 def get_per_contract_values(
     data: dataBlob, strategy_name: str, list_of_instruments: list
 ) -> portfolioWeights:
-
     per_contract_values = portfolioWeights(
         [
             (
@@ -359,7 +353,6 @@ def calculate_costs_per_portfolio_weight(
     strategy_name: str,
     list_of_instruments: list,
 ) -> meanEstimates:
-
     costs = meanEstimates(
         [
             (
@@ -384,7 +377,6 @@ def get_cost_per_notional_weight_as_proportion_of_capital(
     strategy_name: str,
     instrument_code: str,
 ) -> float:
-
     capital = capital_for_strategy(data, strategy_name=strategy_name)
 
     cost_per_contract = get_cash_cost_in_base_for_instrument(
@@ -424,7 +416,6 @@ def get_constraints(data, strategy_name: str, list_of_instruments: list):
 def get_no_trade_keys(
     data: dataBlob, strategy_name: str, list_of_instruments: list
 ) -> list:
-
     no_trade_keys = [
         instrument_code
         for instrument_code in list_of_instruments
@@ -461,7 +452,6 @@ def get_reduce_only_keys(
 def get_override_for_instrument_strategy(
     data: dataBlob, instrument_strategy: instrumentStrategy
 ) -> Override:
-
     diag_overrides = diagOverrides(data)
     override = diag_overrides.get_cumulative_override_for_instrument_strategy(
         instrument_strategy
@@ -473,7 +463,6 @@ def get_override_for_instrument_strategy(
 def get_covariance_matrix_for_instrument_returns_for_optimisation(
     data: dataBlob, list_of_instruments: list
 ) -> covarianceEstimate:
-
     corr_matrix = get_correlation_matrix_for_instrument_returns(
         data, list_of_instruments
     )
@@ -517,11 +506,11 @@ def get_speed_control(data):
             "config.small_system doesn't include buffer or shadow cost or cost_multiplier: you've probably messed up your private_config"
         )
 
-    data.log.msg(
+    data.log.debug(
         "Shadow cost %f multiply by cost multiplier %f) = %f"
         % (trade_shadow_cost, cost_multiplier, trade_shadow_cost * cost_multiplier)
     )
-    data.log.msg("Tracking error buffer %f" % tracking_error_buffer)
+    data.log.debug("Tracking error buffer %f" % tracking_error_buffer)
 
     speed_control = speedControlForDynamicOpt(
         trade_shadow_cost=trade_shadow_cost * cost_multiplier,
@@ -540,7 +529,6 @@ def get_config_parameters(data: dataBlob) -> dict:
 def get_objective_instance(
     data: dataBlob, data_for_objective: dataForObjectiveInstance
 ) -> objectiveFunctionForGreedy:
-
     objective_function = objectiveFunctionForGreedy(
         log=data.log,
         contracts_optimal=data_for_objective.positions_optimal,
@@ -560,7 +548,6 @@ def get_optimised_positions_data_dict_given_optimisation(
     data_for_objective: dataForObjectiveInstance,
     objective_function: objectiveFunctionForGreedy,
 ) -> dict:
-
     optimised_positions = objective_function.optimise_positions()
     optimised_positions = optimised_positions.replace_weights_with_ints()
 
@@ -606,7 +593,6 @@ def get_optimised_positions_data_dict_given_optimisation(
 def get_positions_given_weights(
     weights: portfolioWeights, per_contract_value: portfolioWeights
 ) -> portfolioWeights:
-
     positions = weights / per_contract_value
     positions = positions.replace_weights_with_ints()
 
@@ -616,7 +602,6 @@ def get_positions_given_weights(
 def get_weights_given_positions(
     positions: portfolioWeights, per_contract_value: portfolioWeights
 ) -> portfolioWeights:
-
     weights = positions * per_contract_value
 
     return weights
@@ -660,7 +645,6 @@ def get_optimal_position_entry_with_calcs_for_code(
 def write_optimised_positions_data(
     data: dataBlob, strategy_name: str, optimised_positions_data: dict
 ):
-
     for instrument_code, optimised_position_entry in optimised_positions_data.items():
         write_optimised_positions_data_for_code(
             data,
@@ -676,13 +660,12 @@ def write_optimised_positions_data_for_code(
     instrument_code: str,
     optimised_position_entry: optimalPositionWithDynamicCalculations,
 ):
-
     data_optimal_positions = dataOptimalPositions(data)
     instrument_strategy = instrumentStrategy(
         instrument_code=instrument_code, strategy_name=strategy_name
     )
 
-    data.log.msg(
+    data.log.debug(
         "Adding optimal position for %s: %s"
         % (str(instrument_strategy), optimised_position_entry.verbose_repr())
     )
@@ -697,7 +680,6 @@ def list_of_trades_given_optimised_and_actual_positions(
     optimised_positions_data: dict,
     current_positions: dict,
 ) -> listOfOrders:
-
     list_of_instruments = optimised_positions_data.keys()
     trade_list = [
         trade_given_optimal_and_actual_positions(
@@ -722,7 +704,6 @@ def trade_given_optimal_and_actual_positions(
     optimised_position_entry: optimalPositionWithDynamicCalculations,
     current_position: int,
 ) -> instrumentOrder:
-
     optimised_position = optimised_position_entry.optimised_position
 
     trade_required = optimised_position - current_position
@@ -742,8 +723,7 @@ def trade_given_optimal_and_actual_positions(
         reference_datetime=reference_date,
     )
 
-    log = order_required.log_with_attributes(data.log)
-    log.msg(
+    data.log.debug(
         "Current %d Required position %d Required trade %d Reference price %f  for contract %s"
         % (
             current_position,
@@ -751,7 +731,9 @@ def trade_given_optimal_and_actual_positions(
             trade_required,
             reference_price,
             reference_contract,
-        )
+        ),
+        **order_required.log_attributes(),
+        method="temp",
     )
 
     return order_required

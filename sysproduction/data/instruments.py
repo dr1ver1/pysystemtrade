@@ -1,24 +1,30 @@
-from sysdata.csv.csv_instrument_data import csvFuturesInstrumentData
+import pandas as pd
 
 from sysdata.data_blob import dataBlob
 from sysdata.futures.instruments import futuresInstrumentData
 from sysdata.futures.spread_costs import spreadCostData
-from sysdata.mongodb.mongo_spread_costs import mongoSpreadCostData
+
 from sysobjects.spot_fx_prices import currencyValue
 from sysobjects.instruments import instrumentCosts
 
 from sysproduction.data.currency_data import dataCurrency
 from sysproduction.data.generic_production_data import productionDataLayerGeneric
+from sysproduction.data.config import get_list_of_stale_instruments
+from sysproduction.data.production_data_objects import (
+    STORED_SPREAD_DATA,
+    get_class_for_data_type,
+    FUTURES_INSTRUMENT_DATA,
+)
 
 
 class updateSpreadCosts(productionDataLayerGeneric):
     def _add_required_classes_to_data(self, data) -> dataBlob:
-        data.add_class_object(mongoSpreadCostData)
+        data.add_class_object(get_class_for_data_type(STORED_SPREAD_DATA))
         return data
 
     def update_spread_costs(self, instrument_code: str, spread_cost: float):
         original_cost = self.db_spread_cost_data.get_spread_cost(instrument_code)
-        self.log.msg(
+        self.log.debug(
             "Updating spread for %s from %f to %f"
             % (instrument_code, original_cost, spread_cost)
         )
@@ -33,11 +39,42 @@ class updateSpreadCosts(productionDataLayerGeneric):
 
 class diagInstruments(productionDataLayerGeneric):
     def _add_required_classes_to_data(self, data: dataBlob) -> dataBlob:
-        data.add_class_list([csvFuturesInstrumentData, mongoSpreadCostData])
+        data.add_class_list(
+            [
+                get_class_for_data_type(FUTURES_INSTRUMENT_DATA),
+                get_class_for_data_type(STORED_SPREAD_DATA),
+            ]
+        )
+
         return data
 
     def get_spread_costs_as_series(self):
         return self.db_spread_cost_data.get_spread_costs_as_series()
+
+    def get_block_commission_for_instrument_as_currency_value(
+        self, instrument_code: str
+    ) -> currencyValue:
+        currency = self.get_currency(instrument_code)
+        block_commission = (
+            self.get_block_commission_for_instrument_as_in_instrument_currency(
+                instrument_code
+            )
+        )
+        ccy_value = currencyValue(currency=currency, value=block_commission)
+
+        return ccy_value
+
+    def get_block_commission_for_instrument_as_in_instrument_currency(
+        self, instrument_code: str
+    ) -> float:
+        costs = self.get_cost_object(instrument_code)
+        block_commission = costs.value_of_block_commission
+
+        return block_commission
+
+    def has_percentage_commission(self, instrument_code: str) -> float:
+        costs = self.get_cost_object(instrument_code)
+        return costs.percentage_cost > 0
 
     def get_cost_object(self, instrument_code: str) -> instrumentCosts:
         meta_data = self.get_meta_data(instrument_code)
@@ -106,10 +143,7 @@ class diagInstruments(productionDataLayerGeneric):
         return instrument_codes
 
     def get_stale_instruments(self) -> list:
-        config = self.data.config
-        stale_instruments = config.get_element_or_default("stale_instruments", [])
-
-        return stale_instruments
+        return get_list_of_stale_instruments()
 
     @property
     def db_futures_instrument_data(self) -> futuresInstrumentData:
@@ -123,8 +157,3 @@ class diagInstruments(productionDataLayerGeneric):
 def get_block_size(data, instrument_code):
     diag_instruments = diagInstruments(data)
     return diag_instruments.get_point_size(instrument_code)
-
-
-def get_stale_instruments(data):
-    diag_instruments = diagInstruments(data)
-    return diag_instruments.get_stale_instruments()

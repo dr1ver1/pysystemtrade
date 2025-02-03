@@ -13,7 +13,6 @@ from sysquant.estimators.correlation_over_time import correlation_over_time
 def pooled_correlation_estimator(
     data: listOfDataFrames, frequency="W", forward_fill_data=True, **kwargs
 ) -> CorrelationList:
-
     copied_data = copy(data)
     if forward_fill_data:
         # NOTE if we're not pooling passes a list of one
@@ -24,7 +23,7 @@ def pooled_correlation_estimator(
     ## Will need to keep this to adjust lookbacks
     length_adjustment = len(downsampled_data)
 
-    ## We do this to ensure same frequency throughout once concatendate
+    ## We do this to ensure same frequency throughout once concatenated
     data_at_common_frequency = downsampled_data.reindex_to_common_index()
 
     # Make into one giant dataframe

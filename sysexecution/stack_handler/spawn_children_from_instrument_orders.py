@@ -1,3 +1,4 @@
+from typing import Callable
 from collections import namedtuple
 
 from syscore.exceptions import missingData
@@ -17,7 +18,7 @@ from sysproduction.data.controls import dataLocks
 from sysexecution.order_stacks.order_stack import orderStackData
 from sysexecution.orders.base_orders import Order
 from sysexecution.orders.contract_orders import contractOrder, contractOrderType
-
+from sysexecution.trade_qty import tradeQuantity
 from sysexecution.orders.list_of_orders import listOfOrders
 from sysexecution.orders.instrument_orders import instrumentOrder, instrumentOrderType
 
@@ -25,12 +26,13 @@ from sysexecution.orders.instrument_orders import instrumentOrder, instrumentOrd
 from sysexecution.algos.allocate_algo_to_order import (
     allocate_algo_to_list_of_contract_orders,
 )
-from sysexecution.stack_handler.stackHandlerCore import (
-    stackHandlerCore,
-    put_children_on_stack,
-    add_children_to_parent_or_rollback_children,
-    log_successful_adding,
+from sysexecution.stack_handler.stackHandlerCore import stackHandlerCore
+from sysexecution.stack_handler.roll_orders import (
+    auto_update_roll_status,
+    is_order_reducing_order,
 )
+
+contractIdAndTrade = namedtuple("contractIDAndTrade", ["contract_id", "trade"])
 
 
 class stackHandlerForSpawning(stackHandlerCore):
@@ -40,7 +42,6 @@ class stackHandlerForSpawning(stackHandlerCore):
             self.spawn_children_from_instrument_order_id(instrument_order_id)
 
     def spawn_children_from_instrument_order_id(self, instrument_order_id: int):
-
         instrument_order = self.instrument_stack.get_order_with_id_from_stack(
             instrument_order_id
         )
@@ -52,22 +53,26 @@ class stackHandlerForSpawning(stackHandlerCore):
             instrument_order.instrument_code
         )
         if instrument_locked:
-            # log.msg("Instrument is locked, not spawning order")
+            # log.debug("Instrument is locked, not spawning order")
             return None
 
-        list_of_contract_orders = spawn_children_from_instrument_order(
-            self.data, instrument_order
+        list_of_contract_orders = self.spawn_children_from_instrument_order(
+            instrument_order
         )
 
-        log = instrument_order.log_with_attributes(self.log)
-        log.msg("List of contract orders spawned %s" % str(list_of_contract_orders))
+        if len(list_of_contract_orders) > 0:
+            self.log.debug(
+                "List of contract orders spawned %s" % str(list_of_contract_orders),
+                **instrument_order.log_attributes(),
+                method="temp",
+            )
 
-        self.add_children_to_stack_and_child_id_to_parent(
-            self.instrument_stack,
-            self.contract_stack,
-            instrument_order,
-            list_of_contract_orders,
-        )
+            self.add_children_to_stack_and_child_id_to_parent(
+                self.instrument_stack,
+                self.contract_stack,
+                instrument_order,
+                list_of_contract_orders,
+            )
 
     def add_children_to_stack_and_child_id_to_parent(
         self,
@@ -76,197 +81,232 @@ class stackHandlerForSpawning(stackHandlerCore):
         parent_order: Order,
         list_of_child_orders: listOfOrders,
     ):
-
-        parent_log = parent_order.log_with_attributes(self.log)
-
-        list_of_child_ids = put_children_on_stack(
+        list_of_child_ids = self.put_children_on_stack(
             child_stack=child_stack,
             list_of_child_orders=list_of_child_orders,
-            parent_log=parent_log,
             parent_order=parent_order,
         )
         if len(list_of_child_ids) == 0:
             return None
 
-        success_or_failure = add_children_to_parent_or_rollback_children(
+        success_or_failure = self.add_children_to_parent_or_rollback_children(
             child_stack=child_stack,
             parent_order=parent_order,
-            parent_log=parent_log,
             parent_stack=parent_stack,
             list_of_child_ids=list_of_child_ids,
         )
 
         if success_or_failure is success:
-            log_successful_adding(
+            self.log_successful_adding(
                 list_of_child_orders=list_of_child_orders,
                 list_of_child_ids=list_of_child_ids,
                 parent_order=parent_order,
-                parent_log=parent_log,
             )
 
+    def spawn_children_from_instrument_order(self, instrument_order: instrumentOrder):
+        auto_update_roll_status(
+            data=self.data, instrument_code=instrument_order.instrument_code
+        )
+        spawn_function = self.function_to_process_instrument(
+            instrument_order.instrument_code
+        )
+        list_of_contract_orders = spawn_function(instrument_order)
+        list_of_contract_orders = allocate_algo_to_list_of_contract_orders(
+            self.data, list_of_contract_orders, instrument_order
+        )
 
-def spawn_children_from_instrument_order(
-    data: dataBlob, instrument_order: instrumentOrder
-):
+        return list_of_contract_orders
 
-    spawn_function = function_to_process_instrument(instrument_order.instrument_code)
-    list_of_contract_orders = spawn_function(data, instrument_order)
-    list_of_contract_orders = allocate_algo_to_list_of_contract_orders(
-        data, list_of_contract_orders, instrument_order
-    )
+    def function_to_process_instrument(self, instrument_code: str) -> Callable:
+        """
+        FIX ME in future this will handle spread orders, but for now is only for 'single instruments'
 
-    return list_of_contract_orders
+        We can get spread trades from rolls but these are not processed here
+
+        :param instrument_code:
+        :return: function
+        """
+        function_dict = dict(
+            single_instrument=self.single_instrument_child_orders,
+            inter_market=inter_market_instrument_child_orders,
+            intra_market=intra_market_instrument_child_orders,
+        )
+        instrument_type = "single_instrument"
+
+        required_function = function_dict[instrument_type]
+
+        return required_function
+
+    def single_instrument_child_orders(
+        self, instrument_order: instrumentOrder
+    ) -> listOfOrders:
+        """
+        Generate child orders for a single instrument (not rolls)
+
+        :param instrument_order:
+        :return: A list of contractOrders to submit to the stack
+        """
+        # We don't allow zero trades to be spawned
+        # Zero trades can enter the instrument stack, where they can potentially
+        # modify existing trades
+        if instrument_order.is_zero_trade():
+            return listOfOrders([])
+
+        # Get required contract(s) depending on roll status
+        list_of_child_contract_dates_and_trades = (
+            self.get_required_contract_trade_for_instrument(instrument_order)
+        )
+
+        raw_list_of_contract_orders = (
+            list_of_contract_orders_from_list_of_child_date_and_trade(
+                instrument_order, list_of_child_contract_dates_and_trades
+            )
+        )
+
+        list_of_contract_orders = self.adjust_limit_orders_with_correct_prices(
+            instrument_order=instrument_order,
+            list_of_contract_orders=raw_list_of_contract_orders,
+        )
+
+        return list_of_contract_orders
+
+    def adjust_limit_orders_with_correct_prices(
+        self,
+        list_of_contract_orders: listOfOrders,
+        instrument_order: instrumentOrder,
+    ) -> listOfOrders:
+        # Get reference price for relevant contract(s)
+        # used for TCA
+        # Adjust price if reference contract is different from required contract
+        list_of_contract_orders_with_adjusted_reference_prices = (
+            calculate_reference_prices_for_direct_child_orders(
+                self.data, instrument_order, list_of_contract_orders
+            )
+        )
+
+        # Now get the limit prices, where relevant
+        # Adjust limit price if limit_contract is different from required contract
+        list_of_contract_orders_with_adjusted_limit_prices = (
+            calculate_limit_prices_for_direct_child_orders(
+                self.data,
+                instrument_order,
+                list_of_contract_orders_with_adjusted_reference_prices,
+            )
+        )
+
+        return list_of_contract_orders_with_adjusted_limit_prices
+
+    def get_required_contract_trade_for_instrument(
+        self, instrument_order: instrumentOrder
+    ) -> list:
+        """
+        Return the contract to trade for a given instrument
+
+        Depends on roll status and trade vs position:
+         - roll_states = ['No_Roll', 'Passive', 'Force', 'Force_Outright', 'Roll_Adjusted']
+
+        If 'No Roll' then trade current contract (also 'No Open', since constraint applied upstream)
+        If 'Passive', and no position in current contract: trade next contract
+        If 'Passive', and reducing trade which leaves zero or something in current contract: trade current contract
+        If 'Passive', and reducing trade which is larger than current contract position: trade current and next contract
+        If 'Passive', and increasing trade: trade next contract
+        If 'Force' or 'Force Outright' or 'Roll_Adjusted' or 'Close': don't trade
 
 
-def function_to_process_instrument(instrument_code: str) -> "function":
-    """
-    FIX ME in future this will handle spread orders, but for now is only for 'single instruments'
+        :param instrument_order:
+        :return: tuple: list of child orders: each is a tuple: contract str or missing_contract, trade int
+        """
+        instrument_code = instrument_order.instrument_code
+        log_attrs = {**instrument_order.log_attributes(), "method": "temp"}
 
-    We can get spread trades from rolls but these are not processed here
+        trade = instrument_order.as_single_trade_qty_or_error()
+        if trade is missing_order:
+            self.data.log.critical(
+                "Instrument order can't be a spread order", **log_attrs
+            )
+            return []
 
-    :param instrument_code:
-    :return: function
-    """
-    function_dict = dict(
-        single_instrument=single_instrument_child_orders,
-        inter_market=inter_market_instrument_child_orders,
-        intra_market=intra_market_instrument_child_orders,
-    )
-    instrument_type = "single_instrument"
+        diag_positions = diagPositions(self.data)
 
-    required_function = function_dict[instrument_type]
+        if diag_positions.is_roll_state_no_roll(
+            instrument_code
+        ) or diag_positions.is_roll_state_no_open(instrument_code):
+            ## trade normally
+            ## any increasing trades would have been weeded out earlier by strategy order handler
 
-    return required_function
+            return self.child_order_in_priced_contract_only(
+                # data=data,
+                instrument_order=instrument_order,
+            )
 
+        elif diag_positions.is_roll_state_passive(instrument_code):
+            # no log as function does it
+            return passive_roll_child_order(
+                data=self.data, instrument_order=instrument_order
+            )
 
-def single_instrument_child_orders(
-    data: dataBlob, instrument_order: instrumentOrder
-) -> listOfOrders:
-    """
-    Generate child orders for a single instrument (not rolls)
+        elif diag_positions.is_roll_state_close(
+            instrument_code
+        ) or diag_positions.is_roll_state_adjusted(instrument_code):
+            ## do nothing
+            return []
 
-    :param data: dataBlob. Required as uses roll data to determine appropriate instrument
-    :param instrument_order:
-    :return: A list of contractOrders to submit to the stack
-    """
-    # We don't allow zero trades to be spawned
-    # Zero trades can enter the instrument stack, where they can potentially
-    # modify existing trades
-    if instrument_order.is_zero_trade():
-        return listOfOrders([])
+        elif diag_positions.is_double_sided_trade_roll_state(instrument_code):
+            order_reduces_positions = is_order_reducing_order(
+                data=self.data, order=instrument_order
+            )
+            if order_reduces_positions:
+                self.data.log.debug(
+                    "Order %s reduces position, so trading as a passive roll even though roll status is %s"
+                    % (
+                        str(instrument_order),
+                        diag_positions.get_roll_state(instrument_code),
+                    ),
+                    **log_attrs,
+                )
+                return passive_roll_child_order(
+                    data=self.data, instrument_order=instrument_order
+                )
+            else:
+                ## do nothing
+                return []
 
-    # Get required contract(s) depending on roll status
-    list_of_child_contract_dates_and_trades = (
-        get_required_contract_trade_for_instrument(data, instrument_order)
-    )
+        else:
+            self.data.log.critical(
+                "Roll state %s not understood: can't generate trade for %s"
+                % (
+                    diag_positions.get_name_of_roll_state(instrument_code),
+                    str(instrument_order),
+                ),
+                **log_attrs,
+            )
 
-    list_of_contract_orders = list_of_contract_orders_from_list_of_child_date_and_trade(
-        instrument_order, list_of_child_contract_dates_and_trades
-    )
-
-    # Get reference price for relevant contract(s)
-    # used for TCA
-    # Adjust price if reference contract is different from required contract
-    list_of_contract_orders = calculate_reference_prices_for_direct_child_orders(
-        data, instrument_order, list_of_contract_orders
-    )
-
-    # Now get the limit prices, where relevant
-    # Adjust limit price if limit_contract is different from required contract
-    list_of_contract_orders = calculate_limit_prices_for_direct_child_orders(
-        data, instrument_order, list_of_contract_orders
-    )
-
-    return list_of_contract_orders
-
-
-contractIdAndTrade = namedtuple("contractIDAndTrade", ["contract_id", "trade"])
-
-
-def get_required_contract_trade_for_instrument(
-    data: dataBlob, instrument_order: instrumentOrder
-) -> list:
-    """
-    Return the contract to trade for a given instrument
-
-    Depends on roll status and trade vs position:
-     - roll_states = ['No_Roll', 'Passive', 'Force', 'Force_Outright', 'Roll_Adjusted']
-
-    If 'No Roll' then trade current contract
-    If 'Passive', and no position in current contract: trade next contract
-    If 'Passive', and reducing trade which leaves zero or something in current contract: trade current contract
-    If 'Passive', and reducing trade which is larger than current contract position: trade current and next contract
-    If 'Passive', and increasing trade: trade next contract
-    If 'Force' or 'Force Outright' or 'Roll_Adjusted': don't trade
-
-    :param instrument_order:
-    :param data: dataBlog
-    :return: tuple: list of child orders: each is a tuple: contract str or missing_contract, trade int
-    """
-    instrument_code = instrument_order.instrument_code
-    log = instrument_order.log_with_attributes(data.log)
-    trade = instrument_order.as_single_trade_qty_or_error()
-    if trade is missing_order:
-        log.critical("Instrument order can't be a spread order")
         return []
 
-    diag_positions = diagPositions(data)
-
-    if diag_positions.is_roll_state_no_roll(instrument_code):
-        diag_contracts = dataContracts(data)
-        current_contract = diag_contracts.get_priced_contract_id(instrument_code)
-
-        log.msg(
+    def child_order_in_priced_contract_only(
+        self,
+        instrument_order: instrumentOrder,
+    ):
+        instrument_code = instrument_order.instrument_code
+        current_contract = self.data_contracts.get_priced_contract_id(instrument_code)
+        trade = instrument_order.as_single_trade_qty_or_error()
+        self.log.debug(
             "No roll, allocating entire order %s to current contract %s"
-            % (str(instrument_order), current_contract)
+            % (str(instrument_order), current_contract),
+            **instrument_order.log_attributes(),
+            method="temp",
         )
         return [contractIdAndTrade(current_contract, trade)]
-
-    elif diag_positions.is_roll_state_close(instrument_code):
-        diag_contracts = dataContracts(data)
-        current_contract = diag_contracts.get_priced_contract_id(instrument_code)
-
-        log.msg(
-            "Closing roll state, allocating entire order %s to current contract %s"
-            % (str(instrument_order), current_contract)
-        )
-        return [contractIdAndTrade(current_contract, trade)]
-
-    elif diag_positions.is_roll_state_passive(instrument_code):
-        # no log as function does it
-        list_of_child_contract_dates_and_trades = passive_roll_child_order(
-            data=data, instrument_order=instrument_order, trade=trade
-        )
-
-        return list_of_child_contract_dates_and_trades
-
-    elif diag_positions.is_type_of_active_rolling_roll_state(instrument_code):
-        log.msg(
-            "Roll state is active rolling, not going to generate trade for order %s"
-            % (str(instrument_order))
-        )
-        return []
-
-    else:
-        log.critical(
-            "Roll state %s not understood: can't generate trade for %s"
-            % (
-                diag_positions.get_name_of_roll_state(instrument_code),
-                str(instrument_order),
-            )
-        )
-        return []
 
 
 def passive_roll_child_order(
     data: dataBlob,
-    trade: int,
     instrument_order: instrumentOrder,
 ) -> list:
-
-    log = instrument_order.log_with_attributes(data.log)
+    log_attrs = {**instrument_order.log_attributes(), "method": "temp"}
     diag_positions = diagPositions(data)
     instrument_code = instrument_order.instrument_code
+    trade = instrument_order.trade
 
     diag_contracts = dataContracts(data)
     current_contract = diag_contracts.get_priced_contract_id(instrument_code)
@@ -274,60 +314,66 @@ def passive_roll_child_order(
 
     contract = futuresContract(instrument_code, current_contract)
 
-    position_current_contract = diag_positions.get_position_for_contract(contract)
+    position_current_contract = int(diag_positions.get_position_for_contract(contract))
 
     # Break out because so darn complicated
     if position_current_contract == 0:
         # Passive roll and no position in the current contract, start trading
         # the next contract
-        log.msg(
+        data.log.debug(
             "Passive roll handling order %s, no position in current contract, entire trade in next contract %s"
-            % (str(instrument_order), next_contract)
+            % (str(instrument_order), next_contract),
+            **log_attrs,
         )
         return [contractIdAndTrade(next_contract, trade)]
 
     # ok still have a position in the current contract
-    increasing_trade = sign(trade) == sign(position_current_contract)
+    sign_of_trade = trade.sign_of_single_trade()
+    sign_of_position_current_contract = sign(position_current_contract)
+    increasing_trade = sign_of_trade == sign_of_position_current_contract
     if increasing_trade:
         # Passive roll and increasing trade
         # Do it all in next contract
-        log.msg(
+        data.log.debug(
             "Passive roll handling order %s, increasing trade, entire trade in next contract %s"
-            % (str(instrument_order), next_contract)
+            % (str(instrument_order), next_contract),
+            **log_attrs,
         )
         return [contractIdAndTrade(next_contract, trade)]
 
     # ok a reducing trade
-    new_position = position_current_contract + trade
+    new_position = position_current_contract + trade.as_single_trade_qty_or_error()
     sign_of_position_is_unchanged = sign(position_current_contract) == sign(
         new_position
     )
     if new_position == 0 or sign_of_position_is_unchanged:
         # A reducing trade that we can do entirely in the current contract
-        log.msg(
+        data.log.debug(
             "Passive roll handling order %s, reducing trade, entire trade in next contract %s"
-            % (str(instrument_order), next_contract)
+            % (str(instrument_order), next_contract),
+            **log_attrs,
         )
         return [contractIdAndTrade(current_contract, trade)]
 
     # OKAY to recap: it's a passive roll, but the trade will be split between
     # current and next
-    list_of_child_contract_dates_and_trades = passive_trade_split_over_two_contracts(
+
+    data.log.debug(
+        "Passive roll handling order %s, reducing trade, split trade between contract %s and %s"
+        % (str(instrument_order), current_contract, next_contract),
+        **log_attrs,
+    )
+
+    return passive_trade_split_over_two_contracts(
         trade=trade,
         current_contract=current_contract,
         next_contract=next_contract,
         position_current_contract=position_current_contract,
     )
-    log.msg(
-        "Passive roll handling order %s, reducing trade, split trade between contract %s and %s"
-        % (str(instrument_order), current_contract, next_contract)
-    )
-
-    return list_of_child_contract_dates_and_trades
 
 
 def passive_trade_split_over_two_contracts(
-    trade: int,
+    trade: tradeQuantity,
     position_current_contract: int,
     current_contract: str,
     next_contract: str,
@@ -344,20 +390,19 @@ def passive_trade_split_over_two_contracts(
     :param next_contract: str
     :return: list
     """
-
-    trade_in_current_contract = -position_current_contract
-    trade_in_next_contract = trade - trade_in_current_contract
+    trade_as_int = trade.as_single_trade_qty_or_error()
+    trade_in_current_contract_as_int = -position_current_contract
+    trade_in_next_contract_as_int = trade_as_int - trade_in_current_contract_as_int
 
     return [
-        contractIdAndTrade(current_contract, trade_in_current_contract),
-        contractIdAndTrade(next_contract, trade_in_next_contract),
+        contractIdAndTrade(current_contract, trade_in_current_contract_as_int),
+        contractIdAndTrade(next_contract, trade_in_next_contract_as_int),
     ]
 
 
 def list_of_contract_orders_from_list_of_child_date_and_trade(
     instrument_order: instrumentOrder, list_of_child_contract_dates_and_trades: list
 ) -> listOfOrders:
-
     list_of_contract_orders = [
         contract_order_for_direct_instrument_child_date_and_trade(
             instrument_order, child_date_and_trade
@@ -498,15 +543,16 @@ def add_reference_price_to_a_direct_child_order(
             data, child_order, contract_to_match, price_to_adjust
         )
     except missingData:
-        log = instrument_order.log_with_attributes(data.log)
-        log.warn(
+        data.log.warning(
             "Couldn't adjust reference price for order %s child %s going from %s to %s, can't do TCA"
             % (
                 str(instrument_order),
                 str(child_order),
                 contract_to_match,
                 child_order.contract_date,
-            )
+            ),
+            **instrument_order.log_attributes(),
+            method="temp",
         )
         return child_order
 
@@ -572,10 +618,11 @@ def calculate_limit_prices_for_direct_child_orders(
         child_order is missing_order for child_order in list_of_contract_orders
     ]
     if any(flag_missing_orders):
-        log = instrument_order.log_with_attributes(data.log)
-        log.critical(
+        data.log.critical(
             "Couldn't adjust limit price for at least one child order %s: can't execute any child orders"
-            % str(instrument_order)
+            % str(instrument_order),
+            **instrument_order.log_attributes(),
+            method="temp",
         )
         return listOfOrders([])
 
@@ -609,15 +656,16 @@ def add_limit_price_to_a_direct_child_order(
     except missingData:
         # This is a serious problem
         # We can't possibly execute any part of the parent order
-        log = instrument_order.log_with_attributes(data.log)
-        log.critical(
+        data.log.critical(
             "Couldn't adjust limit price for order %s child %s going from %s to %s"
             % (
                 str(instrument_order),
                 str(child_order),
                 contract_to_match,
                 child_order.contract_date,
-            )
+            ),
+            **instrument_order.log_attributes(),
+            method="temp",
         )
         return missing_order
 

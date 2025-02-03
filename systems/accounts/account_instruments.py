@@ -13,7 +13,7 @@ from systems.accounts.curves.account_curve import accountCurve
 
 
 class accountInstruments(accountCosts, accountBufferingSystemLevel):
-    # dont' cache: just a switch method
+    # don't cache: just a switch method
     @dont_cache
     def pandl_for_instrument(
         self, instrument_code: str, delayfill: bool = True, roundpositions: bool = True
@@ -40,7 +40,7 @@ class accountInstruments(accountCosts, accountBufferingSystemLevel):
         0.13908407620762306
         """
 
-        self.log.msg(
+        self.log.debug(
             "Calculating pandl for instrument for %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -88,7 +88,7 @@ class accountInstruments(accountCosts, accountBufferingSystemLevel):
         0.13908407620762306
         """
 
-        self.log.msg(
+        self.log.debug(
             "Calculating pandl for instrument for %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -120,8 +120,9 @@ class accountInstruments(accountCosts, accountBufferingSystemLevel):
         delayfill: bool = True,
         roundpositions: bool = True,
     ) -> accountCurve:
-
-        price = self.get_daily_price(instrument_code)
+        price = self.get_instrument_prices_for_position_or_forecast(
+            instrument_code, position_or_forecast=positions
+        )
         fx = self.get_fx_rate(instrument_code)
         value_of_price_point = self.get_value_of_block_price_move(instrument_code)
         daily_returns_volatility = self.get_daily_returns_volatility(instrument_code)
@@ -160,9 +161,10 @@ class accountInstruments(accountCosts, accountBufferingSystemLevel):
     def turnover_at_portfolio_level(
         self, instrument_code: str, roundpositions: bool = True
     ) -> float:
-
         ## assumes we use all capital
-        average_position_for_turnover = self.get_volatility_scalar(instrument_code)
+        average_position_for_turnover = self.get_average_position_at_subsystem_level(
+            instrument_code
+        )
 
         ## Using actual capital
         positions = self.get_buffered_position(
@@ -180,15 +182,17 @@ class accountInstruments(accountCosts, accountBufferingSystemLevel):
         delayfill: bool = True,
         roundpositions: bool = True,
     ) -> accountCurve:
-
         if not roundpositions:
-            self.log.warn(
-                "Using roundpositions=False with cash costs may lead to inaccurate costs (fixed costs, eg commissions will be overstated!!!"
+            self.log.warning(
+                "Using roundpositions=False with cash costs may lead to inaccurate "
+                "costs (fixed costs, eg commissions will be overstated!!!)"
             )
 
         raw_costs = self.get_raw_cost_data(instrument_code)
 
-        price = self.get_daily_price(instrument_code)
+        price = self.get_instrument_prices_for_position_or_forecast(
+            instrument_code, position_or_forecast=positions
+        )
         fx = self.get_fx_rate(instrument_code)
         value_of_price_point = self.get_value_of_block_price_move(instrument_code)
 

@@ -3,12 +3,12 @@ from sysdata.base_data import baseData
 from sysdata.data_blob import dataBlob
 from sysbrokers.broker_trade import brokerTrade
 
-from syslogdiag.log_to_screen import logtoscreen
+from syslogging.logger import *
 
 
 ### generic base class for FX handling
 class brokerFxHandlingData(baseData):
-    def __init__(self, data: dataBlob, log=logtoscreen("brokerFXHandlingData")):
+    def __init__(self, data: dataBlob, log=get_logger("brokerFXHandlingData")):
         super().__init__(log=log)
         self._data = data
 
@@ -22,7 +22,6 @@ class brokerFxHandlingData(baseData):
         account_id: str = arg_not_supplied,
         ccy2: str = "USD",
     ) -> brokerTrade:
-
         raise NotImplementedError
 
     @property

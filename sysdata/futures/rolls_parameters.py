@@ -1,5 +1,5 @@
 from sysdata.base_data import baseData
-from syslogdiag.log_to_screen import logtoscreen
+from syslogging.logger import *
 from sysobjects.rolls import rollParameters
 
 USE_CHILD_CLASS_ROLL_PARAMS_ERROR = (
@@ -19,7 +19,7 @@ class rollParametersData(baseData):
 
     """
 
-    def __init__(self, log=logtoscreen("futuresInstrumentData")):
+    def __init__(self, log=get_logger("futuresInstrumentData")):
         super().__init__(log=log)
 
     def __repr__(self):
@@ -40,18 +40,18 @@ class rollParametersData(baseData):
             )
 
     def delete_roll_parameters(self, instrument_code: str, are_you_sure: bool = False):
-        self.log.label(instrument_code=instrument_code)
+        self.log.debug("Updating log attributes", instrument_code=instrument_code)
 
         if are_you_sure:
             if self.is_code_in_data(instrument_code):
                 self._delete_roll_parameters_data_without_any_warning_be_careful(
                     instrument_code
                 )
-                self.log.terse("Deleted roll parameters for %s" % instrument_code)
+                self.log.info("Deleted roll parameters for %s" % instrument_code)
 
             else:
                 # doesn't exist anyway
-                self.log.warn(
+                self.log.warning(
                     "Tried to delete roll parameters for non existent instrument code %s"
                     % instrument_code
                 )
@@ -66,14 +66,13 @@ class rollParametersData(baseData):
         roll_parameters: rollParameters,
         ignore_duplication: bool = False,
     ):
-
-        self.log.label(instrument_code=instrument_code)
+        self.log.debug("Updating log attributes", instrument_code=instrument_code)
 
         if self.is_code_in_data(instrument_code):
             if ignore_duplication:
                 pass
             else:
-                raise self.log.warn(
+                raise self.log.warning(
                     "There is already %s in the data, you have to delete it first"
                     % instrument_code
                 )
@@ -82,7 +81,7 @@ class rollParametersData(baseData):
             instrument_code, roll_parameters
         )
 
-        self.log.terse("Added roll parameters for instrument %s" % instrument_code)
+        self.log.info("Added roll parameters for instrument %s" % instrument_code)
 
     def is_code_in_data(self, instrument_code: str) -> bool:
         if instrument_code in self.get_list_of_instruments():

@@ -29,6 +29,9 @@ class Test(unittest.TestCase):
         self.data = data
         self.position_sizing = PositionSizing
 
+    def tearDown(self) -> None:
+        self.monkeypatch.undo()
+
     @unittest.SkipTest
     def test_get_combined_forecast(self):
         self.assertAlmostEqual(
@@ -60,8 +63,9 @@ class Test(unittest.TestCase):
         self.assertEqual(ans[1], 2500)
 
     def test_get_daily_cash_vol_target(self):
-        envs = {PRIVATE_CONFIG_DIR_ENV_VAR: "sysdata.tests.custom_private_config"}
-        self.monkeypatch.setattr(os, "environ", envs)
+        self.monkeypatch.setenv(
+            PRIVATE_CONFIG_DIR_ENV_VAR, "sysdata.tests.custom_private_config"
+        )
 
         ans_dict = self.system.positionSize.get_vol_target_dict()
         self.assertEqual(ans_dict["base_currency"], "GBP")
@@ -123,7 +127,7 @@ class Test(unittest.TestCase):
     @unittest.SkipTest
     def test_get_get_volatility_scalar(self):
         self.assertAlmostEqual(
-            self.system.positionSize.get_volatility_scalar("EDOLLAR")
+            self.system.positionSize.get_average_position_at_subsystem_level("EDOLLAR")
             .ffill()
             .values[-1],
             10.33292952955,

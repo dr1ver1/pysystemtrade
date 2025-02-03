@@ -1,7 +1,7 @@
 """
 Utilities I can't put anywhere else...
 """
-
+from typing import Union
 import datetime
 import functools
 import math
@@ -86,6 +86,9 @@ def round_significant_figures(x: float, figures: int = 3) -> float:
     >>> round_significant_figures(0.0234, 2)
     0.023
     """
+    if x == 0:
+        return 0.0
+
     return round(x, figures - int(math.floor(math.log10(abs(x)))) - 1)
 
 
@@ -130,6 +133,10 @@ def str_of_int(x: int) -> str:
         return str(int(x))
     except BaseException:
         return ""
+
+
+def same_sign(x, y):
+    return sign(x) == sign(y)
 
 
 def sign(x: Union[int, float]) -> float:
@@ -207,7 +214,7 @@ def are_dicts_equal(d1: dict, d2: dict) -> bool:
 
 
 class quickTimer(object):
-    def __init__(self, seconds: int = 60):
+    def __init__(self, seconds: Union[float, int] = 60):
         self._time_started = datetime.datetime.now()
         self._time_limit = seconds
 

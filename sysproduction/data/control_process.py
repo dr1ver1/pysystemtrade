@@ -9,11 +9,14 @@ from syscontrol.timer_parameters import timerClassParameters
 
 from sysdata.config.control_config import get_control_config
 from sysdata.data_blob import dataBlob
-from sysdata.mongodb.mongo_process_control import mongoControlProcessData
 from sysdata.production.process_control_data import controlProcessData
 
 
 from sysproduction.data.generic_production_data import productionDataLayerGeneric
+from sysproduction.data.production_data_objects import (
+    get_class_for_data_type,
+    PROCESS_CONTROL_DATA,
+)
 
 DEFAULT_METHOD_FREQUENCY = 60
 DEFAULT_MAX_EXECUTIONS = 1
@@ -25,7 +28,7 @@ LABEL_FOR_ARGS_METHOD_ON_COMPLETION = "_methods_on_completion"
 
 class dataControlProcess(productionDataLayerGeneric):
     def _add_required_classes_to_data(self, data) -> dataBlob:
-        data.add_class_object(mongoControlProcessData)
+        data.add_class_object(get_class_for_data_type(PROCESS_CONTROL_DATA))
 
         return data
 
@@ -69,14 +72,13 @@ class dataControlProcess(productionDataLayerGeneric):
 
         return result
 
-    def finish_process(self, process_name: str) -> named_object:
+    def finish_process(self, process_name: str):
         """
 
         :param process_name: str
-        :return: sucess or failure if can't finish process (maybe already running?)
         """
 
-        return self.db_control_process_data.finish_process(process_name)
+        self.db_control_process_data.finish_process(process_name)
 
     def finish_all_processes(self) -> list:
         list_of_status = self.db_control_process_data.finish_all_processes()
@@ -127,7 +129,7 @@ class dataControlProcess(productionDataLayerGeneric):
 
 class diagControlProcess(productionDataLayerGeneric):
     def _add_required_classes_to_data(self, data) -> dataBlob:
-        data.add_class_object(mongoControlProcessData)
+        data.add_class_object(get_class_for_data_type(PROCESS_CONTROL_DATA))
 
         return data
 
@@ -292,7 +294,6 @@ class diagControlProcess(productionDataLayerGeneric):
         return result
 
     def how_long_in_hours_before_trading_process_finishes(self) -> float:
-
         now_datetime = datetime.datetime.now()
 
         now_date = now_datetime.date()

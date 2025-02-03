@@ -9,6 +9,7 @@ from sysdata.mongodb.mongo_connection import (
     mongo_clean_ints,
     clean_mongo_host,
 )
+from syslogging.logger import *
 
 
 class mongoDataWithSingleKey(object):
@@ -120,7 +121,6 @@ class mongoDataWithSingleKey(object):
         self.collection.remove({key_name: key})
 
     def delete_data_with_any_warning_for_custom_dict(self, custom_dict: dict):
-
         self.collection.remove(custom_dict)
 
     def add_data(self, key, data_dict: dict, allow_overwrite=False, clean_ints=True):
@@ -134,7 +134,7 @@ class mongoDataWithSingleKey(object):
                 self._update_existing_data_with_cleaned_dict(key, cleaned_data_dict)
             else:
                 raise existingData(
-                    "Can't overwite existing data %s/%s for %s"
+                    "Can't overwrite existing data %s/%s for %s"
                     % (self.key_name, key, self.name)
                 )
         else:
@@ -143,12 +143,11 @@ class mongoDataWithSingleKey(object):
             except:
                 ## this could happen if the key has just been added most likely for logs
                 raise existingData(
-                    "Can't overwite existing data %s/%s for %s"
+                    "Can't overwrite existing data %s/%s for %s"
                     % (self.key_name, key, self.name)
                 )
 
     def _update_existing_data_with_cleaned_dict(self, key, cleaned_data_dict):
-
         key_name = self.key_name
         self.collection.update_one({key_name: key}, {"$set": cleaned_data_dict})
 
@@ -162,36 +161,46 @@ class mongoDataWithMultipleKeys(object):
     """
     Read and write data class to get data from a mongo database
 
-    Use this if you aren't using a specific key as the index
-
+    Use this if you want a collection with a compound index, ie if you need to
+    search for documents using more than one field
     """
 
-    def __init__(self, collection_name: str, mongo_db=arg_not_supplied):
-        self.init_mongo(collection_name, mongo_db=mongo_db)
+    def __init__(
+        self,
+        collection_name: str,
+        mongo_db=arg_not_supplied,
+        index_config: dict = None,
+    ):
+        self._log = get_logger("mongoDataWithMultipleKeys")
+        self.init_mongo(collection_name, mongo_db=mongo_db, index_config=index_config)
 
     def init_mongo(
         self,
         collection_name: str,
         mongo_db=arg_not_supplied,
+        index_config=None,
     ):
-        mongo_object = mongoConnection(collection_name, mongo_db=mongo_db)
+        self._mongo = mongoConnection(collection_name, mongo_db=mongo_db)
 
-        self._mongo = mongo_object
+        if index_config:
+            try:
+                self._mongo.create_compound_index(index_config)
+            except Exception as exc:
+                self._log.error(
+                    "Failed to create compound index for collection '%s', "
+                    "check config: %s" % (collection_name, exc),
+                )
 
     def __repr__(self):
         return self.name
 
     @property
     def name(self) -> str:
-        mongo_object = self._mongo
-        name = "mongoData connection for mongodb %s/%s @ %s -p %s " % (
-            mongo_object.database_name,
-            mongo_object.collection_name,
-            mongo_object.host,
-            mongo_object.port,
-        )
+        col = self._mongo.collection_name
+        db = self._mongo.database_name
+        host = clean_mongo_host(self._mongo.host)
 
-        return name
+        return f"mongoData connection for {col}/{db}, {host}"
 
     def get_list_of_all_dicts(self) -> list:
         cursor = self._mongo.collection.find()
@@ -247,7 +256,7 @@ class mongoDataWithMultipleKeys(object):
                 )
             else:
                 raise existingData(
-                    "Can't overwite existing data %s for %s"
+                    "Can't overwrite existing data %s for %s"
                     % (str(dict_of_keys), self.name)
                 )
         else:
@@ -256,7 +265,6 @@ class mongoDataWithMultipleKeys(object):
     def _update_existing_data_with_cleaned_dict(
         self, dict_of_keys: dict, cleaned_data_dict: dict
     ):
-
         self._mongo.collection.update_one(dict_of_keys, {"$set": cleaned_data_dict})
 
     def _add_new_cleaned_dict(self, dict_of_keys: dict, cleaned_data_dict: dict):
@@ -267,7 +275,6 @@ class mongoDataWithMultipleKeys(object):
         self._mongo.collection.insert_one(dict_with_both_keys_and_data)
 
     def delete_data_without_any_warning(self, dict_of_keys):
-
         self._mongo.collection.remove(dict_of_keys)
 
 

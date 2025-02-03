@@ -11,7 +11,7 @@ class tradeableObject(object):
     """
 
     def __init__(self, object_name):
-        # probably overriden with nicer entry
+        # probably overridden with nicer entry
         self._key = object_name
 
     def __repr__(self):
@@ -26,7 +26,7 @@ class tradeableObject(object):
 
     @property
     def key(self):
-        # probably overriden
+        # probably overridden
         return self._key
 
 
@@ -60,6 +60,22 @@ class listOfInstrumentStrategies(list):
         ]
 
         return list_of_instrument_strategies
+
+    def filter_to_remove_list_of_instruments(self, list_of_instruments_to_remove: list):
+        filtered_list = [
+            instrument_strategy
+            for instrument_strategy in self
+            if instrument_strategy.instrument_code not in list_of_instruments_to_remove
+        ]
+        return listOfInstrumentStrategies(filtered_list)
+
+    def filter_to_remove_list_of_strategies(self, list_of_strategies_to_remove: list):
+        filtered_list = [
+            instrument_strategy
+            for instrument_strategy in self
+            if instrument_strategy.strategy_name not in list_of_strategies_to_remove
+        ]
+        return listOfInstrumentStrategies(filtered_list)
 
 
 STRATEGY_NAME_KEY = "strategy_name"
@@ -146,7 +162,6 @@ class futuresContractStrategy(tradeableObject):
     def from_strategy_name_and_contract_object(
         futuresContractStrategy, strategy_name: str, futures_contract: futuresContract
     ):
-
         return futuresContractStrategy(
             strategy_name=strategy_name,
             contract_id=futures_contract.date_str,

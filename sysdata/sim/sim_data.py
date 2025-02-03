@@ -9,7 +9,7 @@ from syscore.pandas.frequency import (
     resample_prices_to_business_day_index,
 )
 from sysdata.base_data import baseData
-
+from syslogging.logger import *
 from sysobjects.spot_fx_prices import fxPrices
 from sysobjects.instruments import instrumentCosts
 
@@ -71,7 +71,7 @@ class simData(baseData):
         """
 
         # inherit the log
-        self._log = base_system.log.setup(stage="data")
+        self._log = get_logger("base_system", {STAGE_LOG_LABEL: "data"})
         self._parent = base_system
 
     @property
@@ -174,7 +174,7 @@ class simData(baseData):
         """
         Default method to get instrument price at 'natural' frequency
 
-        Will usually be overriden when inherited with specific data source
+        Will usually be overridden when inherited with specific data source
 
         :param instrument_code: instrument to get prices for
         :type instrument_code: str
@@ -194,7 +194,7 @@ class simData(baseData):
         """
         Default method to get instrument price at 'natural' frequency
 
-        Will usually be overriden when inherited with specific data source
+        Will usually be overridden when inherited with specific data source
 
         :param instrument_code: instrument to get prices for
         :type instrument_code: str
@@ -224,7 +224,7 @@ class simData(baseData):
         :returns: float
 
         """
-        self.log.warn(
+        self.log.warning(
             "Using base method of simData, value of block price move may not be accurate"
         )
 
@@ -246,7 +246,7 @@ class simData(baseData):
 
         """
 
-        self.log.warn("Using base method of simData, using zero costs")
+        self.log.warning("Using base method of simData, using zero costs")
 
         return instrumentCosts()
 
@@ -270,7 +270,7 @@ class simData(baseData):
         Get the FX rate currency1/currency2 between two currencies
         Or return None if not available
 
-        (Normally we'd over ride this with a specific source)
+        (Normally we'd override this with a specific source)
 
 
         """
@@ -287,7 +287,7 @@ class simData(baseData):
         Get the FX rate currency1/currency2 between two currencies
         Or return None if not available
 
-        (Normally we'd over ride this with a specific source)
+        (Normally we'd override this with a specific source)
 
 
         """
@@ -295,7 +295,6 @@ class simData(baseData):
 
 
 def _resolve_start_date(sim_data: simData):
-
     try:
         config = _resolve_config(sim_data)
     except missingData:

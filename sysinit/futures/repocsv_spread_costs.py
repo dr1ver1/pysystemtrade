@@ -43,7 +43,6 @@ def copy_spread_costs_from_csv_to_mongo(data: dataBlob):
 def process_new_instruments(
     data_in: spreadCostData, data_out: spreadCostData, new_instruments: list
 ):
-
     if len(new_instruments) == 0:
         return None
 
@@ -68,7 +67,6 @@ def process_new_instruments(
 def process_modified_instruments(
     data_in: spreadCostData, data_out: spreadCostData, modified_instruments: list
 ):
-
     actually_modified_instruments = []
     for instrument_code in modified_instruments:
         spread_for_instrument = data_in.get_spread_cost(instrument_code)
@@ -95,7 +93,8 @@ def process_modified_instruments(
 
         if check_on_modify:
             okay_to_modify = true_if_answer_is_yes(
-                "Okay to replace %f with %f" % (existing_spread, new_spread)
+                "%s: Okay to replace %f with %f"
+                % (instrument_code, existing_spread, new_spread)
             )
             if not okay_to_modify:
                 continue
@@ -104,7 +103,6 @@ def process_modified_instruments(
 
 
 def process_deleted_instruments(data_out: spreadCostData, deleted_instruments: list):
-
     if len(deleted_instruments) == 0:
         return None
 

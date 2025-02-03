@@ -1,5 +1,8 @@
 from copy import copy
 
+from sysbrokers.broker_contract_commission_data import (
+    brokerFuturesContractCommissionData,
+)
 from sysbrokers.broker_factory import get_broker_class_list
 from sysbrokers.broker_fx_handling import brokerFxHandlingData
 from sysbrokers.broker_static_data import brokerStaticData
@@ -10,9 +13,9 @@ from sysbrokers.broker_capital_data import brokerCapitalData
 from sysbrokers.broker_contract_position_data import brokerContractPositionData
 from sysbrokers.broker_fx_prices_data import brokerFxPricesData
 from sysbrokers.broker_instrument_data import brokerFuturesInstrumentData
-from syscore.exceptions import missingContract, missingData
+from syscore.exceptions import missingData
 
-from syscore.constants import market_closed, arg_not_supplied
+from syscore.constants import arg_not_supplied
 from syscore.exceptions import orderCannotBeModified
 from sysexecution.orders.named_order_objects import missing_order
 from syscore.dateutils import Frequency, DAILY_PRICE_FREQ
@@ -23,7 +26,10 @@ from sysdata.tools.cleaner import apply_price_cleaning
 
 from sysexecution.orders.broker_orders import brokerOrder
 from sysexecution.orders.list_of_orders import listOfOrders
-from sysexecution.tick_data import dataFrameOfRecentTicks
+from sysexecution.tick_data import (
+    dataFrameOfRecentTicks,
+    get_df_of_ticks_from_ticker_object,
+)
 from sysexecution.tick_data import analyse_tick_data_frame, tickerObject, analysisTick
 from sysexecution.orders.contract_orders import contractOrder
 from sysexecution.trade_qty import tradeQuantity
@@ -33,7 +39,7 @@ from sysobjects.contract_dates_and_expiries import expiryDate
 from sysobjects.contracts import futuresContract
 from sysobjects.instruments import futuresInstrumentWithMetaData
 from sysobjects.production.positions import contractPosition, listOfContractPositions
-from sysobjects.spot_fx_prices import fxPrices
+from sysobjects.spot_fx_prices import fxPrices, currencyValue
 from sysobjects.futures_per_contract_prices import futuresContractPrices
 from sysproduction.data.positions import diagPositions
 from sysproduction.data.currency_data import dataCurrency
@@ -42,8 +48,11 @@ from sysproduction.data.generic_production_data import productionDataLayerGeneri
 
 
 class dataBroker(productionDataLayerGeneric):
-    def _add_required_classes_to_data(self, data) -> dataBlob:
+    def __init__(self, data: dataBlob = arg_not_supplied):
+        super().__init__(data)
+        self._diag_controls = diagControlProcess()
 
+    def _add_required_classes_to_data(self, data) -> dataBlob:
         # Add a list of broker specific classes that will be aliased as self.data.broker_fx_prices,
         # self.data.broker_futures_contract_price ... and so on
 
@@ -87,7 +96,21 @@ class dataBroker(productionDataLayerGeneric):
     def broker_static_data(self) -> brokerStaticData:
         return self.data.broker_static
 
+    @property
+    def broker_futures_contract_commission(self) -> brokerFuturesContractCommissionData:
+        return self.data.broker_futures_contract_commission
+
+    @property
+    def diag_controls(self) -> diagControlProcess:
+        return self._diag_controls
+
     ## Methods
+    def get_commission_for_contract_in_currency_value(
+        self, contract: futuresContract
+    ) -> currencyValue:
+        return self.broker_futures_contract_commission.get_commission_for_contract(
+            contract
+        )
 
     def get_list_of_contract_dates_for_instrument_code(
         self, instrument_code: str, allow_expired: bool = False
@@ -116,7 +139,7 @@ class dataBroker(productionDataLayerGeneric):
             trade, ccy1, ccy2=ccy2, account_id=account_id
         )
         if result is missing_order:
-            self.log.warn(
+            self.log.warning(
                 "%s %s is not recognised by broker - try inverting" % (ccy1, ccy2)
             )
 
@@ -126,7 +149,6 @@ class dataBroker(productionDataLayerGeneric):
         frequency: Frequency,
         cleaning_config=arg_not_supplied,
     ) -> futuresContractPrices:
-
         broker_prices_raw = self.get_prices_at_frequency_for_contract_object(
             contract_object=contract_object, frequency=frequency
         )
@@ -144,7 +166,6 @@ class dataBroker(productionDataLayerGeneric):
     def get_prices_at_frequency_for_potentially_expired_contract_object(
         self, contract_object: futuresContract, frequency: Frequency
     ) -> futuresContractPrices:
-
         return self.broker_futures_contract_price_data.get_prices_at_frequency_for_potentially_expired_contract_object(
             contract=contract_object, freq=frequency
         )
@@ -152,7 +173,6 @@ class dataBroker(productionDataLayerGeneric):
     def get_prices_at_frequency_for_contract_object(
         self, contract_object: futuresContract, frequency: Frequency
     ) -> futuresContractPrices:
-
         return self.broker_futures_contract_price_data.get_prices_at_frequency_for_contract_object(
             contract_object, frequency, return_empty=False
         )
@@ -160,7 +180,14 @@ class dataBroker(productionDataLayerGeneric):
     def get_recent_bid_ask_tick_data_for_contract_object(
         self, contract: futuresContract
     ) -> dataFrameOfRecentTicks:
-        return self.broker_futures_contract_price_data.get_recent_bid_ask_tick_data_for_contract_object(
+        ticker = self.get_ticker_object_for_contract(contract)
+        ticker_df = get_df_of_ticks_from_ticker_object(ticker)
+        self.cancel_market_data_for_contract(contract)
+
+        return ticker_df
+
+    def get_ticker_object_for_contract(self, contract: futuresContract) -> tickerObject:
+        return self.broker_futures_contract_price_data.get_ticker_object_for_contract(
             contract
         )
 
@@ -179,10 +206,8 @@ class dataBroker(productionDataLayerGeneric):
     def less_than_N_hours_of_trading_left_for_contract(
         self, contract: futuresContract, N_hours: float = 1.0
     ) -> bool:
-
-        diag_controls = diagControlProcess()
         hours_left_before_process_finishes = (
-            diag_controls.how_long_in_hours_before_trading_process_finishes()
+            self.diag_controls.how_long_in_hours_before_trading_process_finishes()
         )
 
         if hours_left_before_process_finishes < N_hours:
@@ -192,9 +217,6 @@ class dataBroker(productionDataLayerGeneric):
         less_than_N_hours_of_trading_left = self.broker_futures_contract_data.less_than_N_hours_of_trading_left_for_contract(
             contract, N_hours=N_hours
         )
-
-        if less_than_N_hours_of_trading_left is market_closed:
-            return market_closed
 
         return less_than_N_hours_of_trading_left
 
@@ -219,9 +241,9 @@ class dataBroker(productionDataLayerGeneric):
         return result
 
     def get_all_current_contract_positions(self) -> listOfContractPositions:
-
-        list_of_positions = (
-            self.broker_contract_position_data.get_all_current_positions_as_list_with_contract_objects()
+        broker_account_id = self.get_broker_account()
+        list_of_positions = self.broker_contract_position_data.get_all_current_positions_as_list_with_contract_objects(
+            broker_account_id
         )
 
         return list_of_positions
@@ -252,6 +274,11 @@ class dataBroker(productionDataLayerGeneric):
 
     def cancel_market_data_for_order(self, order: brokerOrder):
         self.broker_futures_contract_price_data.cancel_market_data_for_order(order)
+
+    def cancel_market_data_for_contract(self, contract: futuresContract):
+        self.broker_futures_contract_price_data.cancel_market_data_for_contract(
+            contract
+        )
 
     def get_broker_account(self) -> str:
         return self.broker_static_data.get_broker_account()
@@ -288,7 +315,9 @@ class dataBroker(productionDataLayerGeneric):
                 contract_order
             )
         except missingData:
-            self.log.warn("Can't get market conditions, setting available size to zero")
+            self.log.warning(
+                "Can't get market conditions, setting available size to zero"
+            )
             side_qty = offside_qty = len(contract_order.trade) * [0]
             return side_qty, offside_qty
 
@@ -306,7 +335,6 @@ class dataBroker(productionDataLayerGeneric):
             contract_order.futures_contract.as_list_of_individual_contracts()
         )
         for contract, qty in zip(list_of_contracts, list_of_trade_qty):
-
             market_conditions_this_contract = (
                 self.check_market_conditions_for_single_legged_contract_and_qty(
                     contract, qty

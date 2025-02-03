@@ -1,5 +1,6 @@
 from copy import copy
 
+from sysexecution.order_stacks.order_stack import missingOrder
 from sysexecution.orders.named_order_objects import missing_order
 from syscore.genutils import quickTimer
 from sysexecution.stack_handler.stackHandlerCore import stackHandlerCore
@@ -34,7 +35,7 @@ class stackHandlerCancelAndModify(stackHandlerCore):
             if log_critical_on_timeout:
                 self.critical_cancel_log(list_of_uncancelled_broker_orders)
         else:
-            self.log.msg("All orders cancelled okay")
+            self.log.debug("All orders cancelled okay")
 
     def try_and_cancel_all_broker_orders_and_return_list_of_orders(
         self,
@@ -64,8 +65,11 @@ class stackHandlerCancelAndModify(stackHandlerCore):
             # no need to cancel
             return missing_order
 
-        log = broker_order.log_with_attributes(self.log)
-        log.msg("Cancelling order on stack with broker %s" % str(broker_order))
+        self.log.debug(
+            "Cancelling order on stack with broker %s" % str(broker_order),
+            **broker_order.log_attributes(),
+            method="temp",
+        )
 
         data_broker = self.data_broker
         data_broker.cancel_order_on_stack(broker_order)
@@ -75,7 +79,6 @@ class stackHandlerCancelAndModify(stackHandlerCore):
     def are_all_orders_cancelled_after_timeout(
         self, list_of_broker_orders: listOfOrders, wait_time_seconds: int = 60
     ) -> listOfOrders:
-
         timer = quickTimer(wait_time_seconds)
         while timer.unfinished:
             list_of_broker_orders = self.list_of_orders_not_yet_cancelled(
@@ -92,18 +95,26 @@ class stackHandlerCancelAndModify(stackHandlerCore):
         new_list_of_orders = copy(list_of_broker_orders)
         for broker_order in list_of_broker_orders:
             # if an order is cancelled, remove from list
-            order_is_cancelled = self.check_order_cancelled(broker_order)
+            try:
+                order_is_cancelled = self.check_order_cancelled(broker_order)
+            except missingOrder:
+                # Maintains previous behavior by assuming an order was cancelled
+                # when the corresponding IB order is not found
+                order_is_cancelled = True
+
             if order_is_cancelled:
-                log = broker_order.log_with_attributes(self.log)
                 new_list_of_orders.remove(broker_order)
-                log.msg("Order %s succesfully cancelled" % broker_order)
+                self.log.debug(
+                    "Order %s successfully cancelled" % broker_order,
+                    **broker_order.log_attributes(),
+                    method="temp",
+                )
 
         new_list_of_orders = listOfOrders(new_list_of_orders)
 
         return new_list_of_orders
 
     def check_order_cancelled(self, broker_order: brokerOrder) -> bool:
-
         data_broker = self.data_broker
         order_is_cancelled = data_broker.check_order_is_cancelled(broker_order)
 
@@ -111,8 +122,9 @@ class stackHandlerCancelAndModify(stackHandlerCore):
 
     def critical_cancel_log(self, list_of_broker_orders: listOfOrders):
         for broker_order in list_of_broker_orders:
-            log = broker_order.log_with_attributes(self.log)
-            log.critical(
-                "Broker order %s could not be cancelled within time limit; might be a position break"
-                % broker_order
+            self.log.critical(
+                "Broker order %s could not be cancelled within time limit; might be a "
+                "position break" % broker_order,
+                **broker_order.log_attributes(),
+                method="temp",
             )

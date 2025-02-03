@@ -2,8 +2,7 @@
 import pandas as pd
 
 from sysdata.config.configdata import Config
-from syslogdiag.pst_logger import pst_logger
-from syslogdiag.log_to_screen import logtoscreen
+from syslogging.logger import *
 from syscore.constants import arg_not_supplied
 
 
@@ -40,10 +39,9 @@ def calculate_buffers(
     vol_scalar: pd.Series,
     instr_weights: pd.DataFrame = arg_not_supplied,
     idm: pd.Series = arg_not_supplied,
-    log: pst_logger = logtoscreen(""),
+    log=get_logger(""),
 ) -> pd.Series:
-
-    log.msg(
+    log.debug(
         "Calculating buffers for %s" % instrument_code,
         instrument_code=instrument_code,
     )
@@ -51,7 +49,7 @@ def calculate_buffers(
     buffer_method = config.buffer_method
 
     if buffer_method == "forecast":
-        log.msg(
+        log.debug(
             "Calculating forecast method buffers for %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -69,14 +67,14 @@ def calculate_buffers(
         )
 
     elif buffer_method == "position":
-        log.msg(
+        log.debug(
             "Calculating position method buffer for %s" % instrument_code,
             instrument_code=instrument_code,
         )
 
         buffer = get_position_method_buffer(config=config, position=position)
     elif buffer_method == "none":
-        log.msg(
+        log.debug(
             "None method, no buffering for %s" % instrument_code,
             instrument_code=instrument_code,
         )
@@ -139,7 +137,6 @@ def get_position_method_buffer(
 
 
 def get_buffer_if_not_buffering(position: pd.Series) -> pd.Series:
-
     EPSILON_POSITION = 0.001
     buffer = pd.Series([EPSILON_POSITION] * position.shape[0], index=position.index)
 
@@ -153,7 +150,6 @@ def _calculate_forecast_buffer_method(
     idm: pd.Series = arg_not_supplied,
     instr_weight_this_code: pd.Series = arg_not_supplied,
 ):
-
     if instr_weight_this_code is arg_not_supplied:
         instr_weight_this_code_indexed = 1.0
     else:

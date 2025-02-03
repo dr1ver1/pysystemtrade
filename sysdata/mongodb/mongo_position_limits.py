@@ -8,7 +8,7 @@ from sysobjects.production.tradeable_object import (
     listOfInstrumentStrategies,
     instrumentStrategy,
 )
-from syslogdiag.log_to_screen import logtoscreen
+from syslogging.logger import *
 
 POSITION_LIMIT_STATUS_COLLECTION = "position_limit_status"
 
@@ -29,7 +29,7 @@ class mongoPositionLimitData(positionLimitData):
 
     """
 
-    def __init__(self, mongo_db=None, log=logtoscreen("mongoPositionLimitData")):
+    def __init__(self, mongo_db=None, log=get_logger("mongoPositionLimitData")):
         super().__init__(log=log)
 
         self._mongo_data = mongoDataWithMultipleKeys(
@@ -53,7 +53,6 @@ class mongoPositionLimitData(positionLimitData):
         return list_of_instruments
 
     def get_all_instrument_strategies_with_limits(self) -> listOfInstrumentStrategies:
-
         dict_of_keys = {MARKER_KEY: MARKER_STRATEGY_INSTRUMENT}
         list_of_dicts = self.mongo_data.get_list_of_result_dicts_for_dict_keys(
             dict_of_keys
@@ -92,7 +91,6 @@ class mongoPositionLimitData(positionLimitData):
     def _get_abs_position_limit_for_instrument_strategy(
         self, instrument_strategy: instrumentStrategy
     ) -> int:
-
         dict_of_keys = {
             MARKER_KEY: MARKER_STRATEGY_INSTRUMENT,
             STRATEGY_KEY: instrument_strategy.strategy_name,

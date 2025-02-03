@@ -8,7 +8,7 @@ from syscore.dateutils import (
     calculate_start_and_end_dates,
     get_date_from_period_and_end_date,
 )
-from syscore.constants import missing_data, arg_not_supplied
+from syscore.constants import arg_not_supplied
 from sysobjects.production.roll_state import ALL_ROLL_INSTRUMENTS
 from syscore.pandas.pdutils import top_and_tail
 from sysdata.data_blob import dataBlob
@@ -88,6 +88,9 @@ from sysproduction.reporting.data.status import (
     get_position_limits_as_df,
 )
 from sysproduction.reporting.data.volume import get_liquidity_data_df
+from sysproduction.reporting.data.commissions import (
+    df_of_configure_and_broker_block_cost_sorted_by_diff,
+)
 
 REPORT_DATETIME_FORMAT = "%d/%m/%Y %H:%M"
 
@@ -102,7 +105,6 @@ class reportingApi(object):
         start_period: str = arg_not_supplied,
         end_period: str = arg_not_supplied,
     ):
-
         self._data = data
         self._calendar_days_back = calendar_days_back
         self._passed_start_date = start_date
@@ -115,7 +117,7 @@ class reportingApi(object):
         start_date = self.start_date
         end_date = self.end_date
         std_header = header(
-            "%s report produced on %s from %s to %s"
+            "%s produced on %s from %s to %s"
             % (
                 report_name,
                 datetime.datetime.now().strftime(REPORT_DATETIME_FORMAT),
@@ -128,7 +130,8 @@ class reportingApi(object):
 
     def terse_header(self, report_name: str):
         terse_header = header(
-            "%s report produced on %s" % (report_name, str(datetime.datetime.now()))
+            "%s produced on %s"
+            % (report_name, datetime.datetime.now().strftime(REPORT_DATETIME_FORMAT))
         )
 
         return terse_header
@@ -174,7 +177,6 @@ class reportingApi(object):
     def table_of_market_moves_using_dates(
         self, sortby: str, truncate: bool = True
     ) -> table:
-
         # sort by one of ['name', 'change', 'vol_adjusted']
         raw_df = self.market_moves_for_dates()
         sorted_df = raw_df.sort_values(sortby)
@@ -192,7 +194,6 @@ class reportingApi(object):
     def table_of_market_moves_given_period(
         self, period: str, sortby: str, truncate: bool = True
     ) -> table:
-
         # sort by one of ['name', 'change', 'vol_adjusted']
         # period eg ['1B', '7D', '1M', '3M', '6M', 'YTD', '12M']
         raw_df = self.market_moves_for_period(period)
@@ -333,7 +334,6 @@ class reportingApi(object):
         return body_text("Total p&l is %.3f%%" % total_capital_pandl)
 
     def table_pandl_for_instruments_across_strategies(self):
-
         pandl_for_instruments_across_strategies_df = (
             self.pandl_for_instruments_across_strategies()
         )
@@ -377,7 +377,6 @@ class reportingApi(object):
         return pandl_for_instruments_across_strategies
 
     def _get_pandl_for_instruments_across_strategies(self) -> pd.DataFrame:
-
         pandl_for_instruments_across_strategies_df = (
             self.pandl_calculator.get_ranked_list_of_pandl_by_instrument_all_strategies_in_date_range()
         )
@@ -401,12 +400,10 @@ class reportingApi(object):
         return total_capital_pandl
 
     def body_text_residual_pandl(self):
-
         residual = self.total_capital_pandl() - self.total_pandl_for_futures()
         return body_text("Residual p&l is %.3f%%" % residual)
 
     def table_strategy_pandl_and_residual(self):
-
         strategies_pandl_df = self.pandl_calculator.get_strategy_pandl_and_residual()
         strategies_pandl_df = strategies_pandl_df.round(2)
 
@@ -565,7 +562,7 @@ class reportingApi(object):
         return table_result
 
     def _roll_data_as_pd(self, instrument_code: str = ALL_ROLL_INSTRUMENTS):
-        roll_data_dict = self.roll_data_dict_for_instrument_code(instrument_code)
+        roll_data_dict = self.roll_data_dict(instrument_code)
 
         result_pd = pd.DataFrame.from_dict(roll_data_dict, orient="index")
 
@@ -573,21 +570,14 @@ class reportingApi(object):
 
         return result_pd
 
-    def roll_data_dict_for_instrument_code(
-        self, instrument_code: str = ALL_ROLL_INSTRUMENTS
-    ):
-        roll_data_dict = self.roll_data_dict
+    def roll_data_dict(self, instrument_code: str = ALL_ROLL_INSTRUMENTS):
+        return self.cache.get(self._get_roll_data_dict, instrument_code)
+
+    def _get_roll_data_dict(self, instrument_code: str = ALL_ROLL_INSTRUMENTS):
         if instrument_code is ALL_ROLL_INSTRUMENTS:
-            return roll_data_dict
+            list_of_instruments = self._list_of_all_instruments()
         else:
-            return {instrument_code: roll_data_dict[instrument_code]}
-
-    @property
-    def roll_data_dict(self):
-        return self.cache.get(self._get_roll_data_dict)
-
-    def _get_roll_data_dict(self):
-        list_of_instruments = self._list_of_all_instruments()
+            list_of_instruments = [instrument_code]
         data = self.data
 
         roll_data_dict = {}
@@ -871,7 +861,6 @@ class reportingApi(object):
     def table_of_sr_costs(
         self, include_commission: bool = True, include_spreads: bool = True
     ) -> table:
-
         if not include_commission and not include_spreads:
             raise Exception("Must include commission or spreads!")
         elif not include_spreads:
@@ -905,7 +894,6 @@ class reportingApi(object):
     def _SR_costs(
         self, include_commission: bool = True, include_spread: bool = True
     ) -> pd.DataFrame:
-
         SR_costs = get_table_of_SR_costs(
             self.data,
             include_commission=include_commission,
@@ -950,6 +938,25 @@ class reportingApi(object):
     def _combined_df_costs(self):
         combined_df_costs = get_combined_df_of_costs(
             self.data, start_date=self.start_date, end_date=self.end_date
+        )
+
+        return combined_df_costs
+
+    ##### COMMISSIONS ####
+    def table_of_commissions(self):
+        df = self.df_commissions()
+        df_as_formatted_table = table(
+            "Commissions in base currency, configure and from broker", df
+        )
+
+        return df_as_formatted_table
+
+    def df_commissions(self):
+        return self.cache.get(self._df_commissions)
+
+    def _df_commissions(self):
+        combined_df_costs = df_of_configure_and_broker_block_cost_sorted_by_diff(
+            self.data
         )
 
         return combined_df_costs
@@ -1136,7 +1143,6 @@ def filter_data_for_delays_and_return_table(
     table_header="Only delayed data",
     max_delay_in_days=3,
 ):
-
     filtered_data = filter_data_for_delays(
         data_with_datetime,
         datetime_colum=datetime_colum,
@@ -1151,12 +1157,7 @@ def filter_data_for_delays_and_return_table(
 def filter_data_for_delays(
     data_with_datetime, datetime_colum="last_start", max_delay_in_days=3
 ) -> pd.DataFrame:
-
     max_delay_in_seconds = max_delay_in_days * SECONDS_PER_DAY
-    # ignore missing data
-    data_with_datetime = data_with_datetime[
-        data_with_datetime[datetime_colum] != missing_data
-    ]
     time_delays = datetime.datetime.now() - data_with_datetime[datetime_colum]
     delayed = [
         time_difference.total_seconds() > max_delay_in_seconds
@@ -1169,7 +1170,6 @@ def filter_data_for_delays(
 def filter_data_for_max_value_and_return_table(
     data_with_field, field_column="field", max_value=0, table_header=""
 ):
-
     filtered_data = filter_data_for_max_value(
         data_with_field, field_column=field_column, max_value=max_value
     )
@@ -1182,7 +1182,6 @@ def filter_data_for_max_value_and_return_table(
 def filter_data_for_max_value(
     data_with_field, field_column="field", max_value=0
 ) -> pd.DataFrame:
-
     field_values = data_with_field[field_column]
     filtered = [value <= max_value for value in field_values]
 

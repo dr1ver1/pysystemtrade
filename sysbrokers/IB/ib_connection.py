@@ -11,8 +11,7 @@ from sysbrokers.IB.ib_connection_defaults import ib_defaults
 from syscore.exceptions import missingData
 from syscore.constants import arg_not_supplied
 
-from syslogdiag.log_to_screen import logtoscreen
-from syslogdiag.pst_logger import pst_logger, BROKER_LOG_LABEL, CLIENTID_LOG_LABEL
+from syslogging.logger import *
 
 from sysdata.config.production_config import get_production_config
 
@@ -29,13 +28,13 @@ class connectionIB(object):
         ib_ipaddress: str = arg_not_supplied,
         ib_port: int = arg_not_supplied,
         account: str = arg_not_supplied,
-        log: pst_logger = logtoscreen("connectionIB"),
+        log_name: str = "connectionIB",
     ):
         """
         :param client_id: client id
         :param ipaddress: IP address of machine running IB Gateway or TWS. If not passed then will get from private config file, or defaults
         :param port: Port listened to by IB Gateway or TWS
-        :param log: logging object
+        :param log_name: calling log name
         :param mongo_db: mongoDB connection
         """
 
@@ -51,18 +50,29 @@ class connectionIB(object):
         # mongoIBclientIDtracker(database_name="another")
 
         # If you copy for another broker include these lines
-        self._init_log(log, client_id)
+        self._log = get_logger(
+            "connectionIB",
+            {
+                TYPE_LOG_LABEL: log_name,
+                BROKER_LOG_LABEL: "IB",
+                CLIENTID_LOG_LABEL: client_id,
+            },
+        )
 
         # You can pass a client id yourself, or let IB find one
 
-        self._init_connection(
-            ipaddress=ipaddress, port=port, client_id=client_id, account=account
-        )
-
-    def _init_log(self, log, client_id: int):
-        new_log = log.setup_empty_except_keep_type()
-        new_log.label(**{BROKER_LOG_LABEL: "IB", CLIENTID_LOG_LABEL: client_id})
-        self._log = new_log
+        try:
+            self._init_connection(
+                ipaddress=ipaddress, port=port, client_id=client_id, account=account
+            )
+        except Exception as e:
+            # Log all exceptions generated during connection as critical error.
+            # Under the default production setup this should send an email.
+            # Error is reraised as we can't really continue and user intervention is required
+            self.log.critical(
+                f"IB connection falied with exception - {e}, connection aborted."
+            )
+            raise
 
     def _init_connection(
         self, ipaddress: str, port: int, client_id: int, account=arg_not_supplied
@@ -107,12 +117,12 @@ class connectionIB(object):
         return self._account
 
     def close_connection(self):
-        self.log.msg("Terminating %s" % str(self._ib_connection_config))
+        self.log.debug("Terminating %s" % str(self._ib_connection_config))
         try:
             # Try and disconnect IB client
             self.ib.disconnect()
         except BaseException:
-            self.log.warn(
+            self.log.warning(
                 "Trying to disconnect IB client failed... ensure process is killed"
             )
 

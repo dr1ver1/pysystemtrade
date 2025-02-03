@@ -34,7 +34,6 @@ class ParsedReport(object):
     def __init__(
         self, text: str = arg_not_supplied, pdf_filename: str = arg_not_supplied
     ):
-
         self._text = text
         self._pdf_filename = pdf_filename
 
@@ -71,7 +70,7 @@ def run_report_with_data_blob(report_config: reportConfig, data: dataBlob):
     :return:
     """
 
-    data.log.msg("Running report %s" % str(report_config))
+    data.log.debug("Running report %s" % str(report_config))
 
     report_results = run_report_from_config(report_config=report_config, data=data)
     parsed_report = parse_report_results(data=data, report_results=report_results)
@@ -80,7 +79,6 @@ def run_report_with_data_blob(report_config: reportConfig, data: dataBlob):
 
 
 def run_report_from_config(report_config: reportConfig, data: dataBlob) -> list:
-
     report_function = resolve_function(report_config.function)
     report_kwargs = report_config.kwargs
 
@@ -206,7 +204,6 @@ def pandas_display_for_reports():
 def output_report(
     data: dataBlob, report_config: reportConfig, parsed_report: ParsedReport
 ):
-
     output = report_config.output
 
     # We either print or email or send to file or ...
@@ -246,7 +243,6 @@ def display_pdf_report(parsed_report: ParsedReport):
 def email_report(
     parsed_report: ParsedReport, report_config: reportConfig, data: dataBlob
 ):
-
     if parsed_report.contains_pdf:
         send_production_mail_msg_attachment(
             body="Report attached",
@@ -275,7 +271,7 @@ def output_file_report(
             report_text=parsed_report.text, full_filename=full_filename
         )
 
-    data.log.msg("Written report to %s" % full_filename)
+    data.log.debug("Written report to %s" % full_filename)
 
 
 def resolve_report_filename(report_config, data: dataBlob):

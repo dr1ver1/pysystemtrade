@@ -29,7 +29,7 @@ class accountCosts(accountInputs):
 
         KEY OUTPUT
         """
-        ## Calculate holding and transaction seperately, as the former could be pooled
+        ## Calculate holding and transaction separately, as the former could be pooled
         transaction_cost = self.get_SR_transaction_cost_for_instrument_forecast(
             instrument_code=instrument_code, rule_variation_name=rule_variation_name
         )
@@ -124,7 +124,6 @@ class accountCosts(accountInputs):
     def _get_forecast_length_weighting_for_list_of_instruments(
         self, instrument_code_list: list, rule_variation_name: str
     ) -> list:
-
         forecast_lengths = [
             self._get_forecast_length_for_instrument_rule(
                 instrument_code, rule_variation_name
@@ -150,7 +149,6 @@ class accountCosts(accountInputs):
     def _get_SR_transaction_cost_of_rule_for_individual_instrument(
         self, instrument_code: str, rule_variation_name: str
     ) -> float:
-
         # note the turnover may still be pooled..
         turnover = self.forecast_turnover(instrument_code, rule_variation_name)
 
@@ -165,7 +163,6 @@ class accountCosts(accountInputs):
     def get_SR_cost_given_turnover(
         self, instrument_code: str, turnover: float
     ) -> float:
-
         SR_cost_trading = self.get_SR_trading_cost_only_given_turnover(
             instrument_code, turnover
         )
@@ -185,8 +182,9 @@ class accountCosts(accountInputs):
 
     def get_SR_holding_cost_only(self, instrument_code: str) -> float:
         cost_per_trade = self.get_SR_cost_per_trade_for_instrument(instrument_code)
-        hold_turnovers = self.get_rolls_per_year(instrument_code) / 2.0
+        hold_turnovers = self.get_rolls_per_year(instrument_code) * 2.0
 
+        ## Assumes no benefit from spread trades i.e. do two separate trades
         SR_cost_holding = hold_turnovers * cost_per_trade
 
         return SR_cost_holding
@@ -232,7 +230,6 @@ class accountCosts(accountInputs):
     def _forecast_turnover_pooled(
         self, instrument_code: str, rule_variation_name: str
     ) -> float:
-
         instrument_code_list = self.has_same_rules_as_code(instrument_code)
         turnover_for_SR = self._forecast_turnover_for_list(
             instrument_code_list, rule_variation_name=rule_variation_name
@@ -287,7 +284,6 @@ class accountCosts(accountInputs):
     def _forecast_turnover_for_individual_instrument(
         self, instrument_code: str, rule_variation_name: str
     ) -> float:
-
         forecast = self.get_capped_forecast(instrument_code, rule_variation_name)
 
         average_forecast_for_turnover = self.average_forecast()
@@ -315,59 +311,28 @@ class accountCosts(accountInputs):
         0.0065584086244069775
         """
 
-        cost_in_percentage_terms = self.get_SR_cost_per_trade_for_instrument_percentage(
-            instrument_code
-        )
-        avg_annual_vol_perc = self._recent_average_annual_perc_vol(instrument_code)
+        raw_costs = self.get_raw_cost_data(instrument_code)
+        block_price_multiplier = self.get_value_of_block_price_move(instrument_code)
+        notional_blocks_traded = 1
+        average_price = self._recent_average_price(instrument_code)
+        ann_stdev_price_units = self._recent_average_annual_price_vol(instrument_code)
 
-        # cost per round trip so double
-        SR_cost = 2.0 * cost_in_percentage_terms / avg_annual_vol_perc
+        SR_cost = raw_costs.calculate_sr_cost(
+            block_price_multiplier=block_price_multiplier,
+            ann_stdev_price_units=ann_stdev_price_units,
+            blocks_traded=notional_blocks_traded,
+            price=average_price,
+        )
 
         return SR_cost
 
     @diagnostic()
-    def get_SR_cost_per_trade_for_instrument_percentage(
-        self, instrument_code: str
-    ) -> float:
-        raw_costs = self.get_raw_cost_data(instrument_code)
-        block_price_multiplier = self.get_value_of_block_price_move(instrument_code)
-        average_price = self._recent_average_price(instrument_code)
-        notional_blocks_traded = 1
-
-        cost_in_percentage_terms = raw_costs.calculate_cost_percentage_terms(
-            blocks_traded=notional_blocks_traded,
-            block_price_multiplier=block_price_multiplier,
-            price=average_price,
-        )
-
-        return cost_in_percentage_terms
-
-    @diagnostic()
-    def _recent_average_price(self, instrument_code: str) -> float:
-        daily_price = self.get_daily_price(instrument_code)
-        start_date = self._date_one_year_before_end_of_price_index(instrument_code)
-        average_price = float(daily_price[start_date:].mean())
-
-        return average_price
-
-    @diagnostic()
-    def _date_one_year_before_end_of_price_index(self, instrument_code: str):
-        daily_price = self.get_daily_price(instrument_code)
-
-        last_date = daily_price.index[-1]
-        start_date = last_date - pd.DateOffset(years=1)
-
-        return start_date
-
-    @diagnostic()
-    def _recent_average_annual_perc_vol(self, instrument_code: str) -> float:
+    def _recent_average_annual_price_vol(self, instrument_code: str) -> float:
         average_vol = self._recent_average_daily_vol(instrument_code)
 
         avg_annual_vol = average_vol * ROOT_BDAYS_INYEAR
-        average_price = self._recent_average_price(instrument_code)
-        avg_annual_vol_perc = avg_annual_vol / average_price
 
-        return avg_annual_vol_perc
+        return avg_annual_vol
 
     @diagnostic()
     def _recent_average_daily_vol(self, instrument_code: str) -> float:
@@ -377,6 +342,25 @@ class accountCosts(accountInputs):
 
         return average_vol
 
+    @diagnostic()
+    def _recent_average_price(self, instrument_code: str) -> float:
+        daily_price = self.get_daily_prices(instrument_code)
+        start_date = self._date_one_year_before_end_of_price_index(instrument_code)
+        average_price = float(daily_price[start_date:].mean())
+
+        return average_price
+
+    @diagnostic()
+    def _date_one_year_before_end_of_price_index(self, instrument_code: str):
+        daily_price = self.get_instrument_prices_for_position_or_forecast(
+            instrument_code
+        )
+
+        last_date = daily_price.index[-1]
+        start_date = last_date - pd.DateOffset(years=1)
+
+        return start_date
+
     @property
-    def use_SR_costs(self) -> float:
+    def use_SR_costs(self) -> bool:
         return str2Bool(self.config.use_SR_costs)

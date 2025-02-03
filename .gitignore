@@ -7,8 +7,11 @@ __pycache__
 .tox
 dist
 build
-# private
+# private: commented out - I *do* want to save my private folder to my repo
 restats
+
+# Ignore log files that are in the root of the project
+/log_*.txt
 
 # Coverage reports
 .coverage

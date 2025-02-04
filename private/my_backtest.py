@@ -14,7 +14,6 @@ from sysdata.sim.csv_futures_sim_data import csvFuturesSimData
 
 
 def createCSVs(instr):
-
     startDate = "2016-01-01"
 
     # Main:

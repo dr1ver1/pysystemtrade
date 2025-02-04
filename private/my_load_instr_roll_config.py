@@ -35,6 +35,7 @@ from sysdata.csv.csv_roll_parameters import csvRollParametersData
 x = futuresInstrumentData()
 mdb = mongoFuturesInstrumentData()
 
+
 # Setting up some instrument configuration
 def instruments_csv_mongo():
     INSTRUMENT_CONFIG_PATH = "private.data.futures.csvconfig"

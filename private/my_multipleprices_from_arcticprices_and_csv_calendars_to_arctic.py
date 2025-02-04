@@ -97,7 +97,6 @@ def arcticUpdateFXspot():
 
 
 if __name__ == "__main__":
-
     arcticDeleteFXspot()
     exit()
     input("Will overwrite existing prices are you sure?! CTL-C to abort")
